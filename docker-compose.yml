@@ -1,0 +1,77 @@
+networks:
+  emqxnet:
+    name: emqxnet
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+
+services:
+  # Broker de Mensajería MQTT EMQX
+  emqx:
+    image: emqx/emqx:5.8.0
+    container_name: emqx_broker
+    restart: always
+    ports:
+      - "1883:1883"      # Tráfico estándar MQTT M2M
+      - "8083:8083"      # MQTT sobre WebSockets (para frontend React)
+      - "18083:18083"    # Consola Web de Administración EMQX
+    environment:
+      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
+    networks:
+      - emqxnet
+
+  # Base de Datos Relacional para Almacenamiento Persistente
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_server
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: emqx_db
+      MYSQL_USER: emqx_user
+      MYSQL_PASSWORD: emqx_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./bd_relacional.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - emqxnet
+
+  # Interfaz Administrativa Web para Inspección de Datos
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: phpmyadmin_gui
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: emqx_user
+      PMA_PASSWORD: emqx_pass
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - emqxnet
+
+  # Módulo de Nodos Virtualizados (V1, V2, V3) y Motor de Reglas Backend
+  virtual_nodes:
+    build:
+      context: ./virtual_simulator
+    container_name: iot_virtual_nodes
+    restart: always
+    depends_on:
+      - emqx
+      - mysql
+    environment:
+      - BROKER_HOST=emqx_broker
+      - BROKER_PORT=1883
+      - DB_HOST=mysql_server
+      - DB_USER=emqx_user
+      - DB_PASSWORD=emqx_pass
+      - DB_NAME=emqx_db
+    networks:
+      - emqxnet
