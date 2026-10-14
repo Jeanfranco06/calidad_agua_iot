@@ -1,0 +1,319 @@
+[LOGIN] url=http://localhost:18083/#/dashboard/overview
+[PUB-WS] clientId=lab07_jeanfranco_pub host=localhost port=8083 path=/mqtt proto=MQTT 5
+[PUB-WS] CONNECTED=True
+=== VENTANA PUBLICADOR TRAS PUBLISH ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+No Data
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+No Data
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 13:29:58
+=== SUSCRIPTOR TRAS PUBLICACION DEL 2DO CLIENTE ===
+Cluster Overview
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Cluster Overview
+Nodes
+Metrics
+Publishing Rate:1 message/sec
+Receiving Rate:1 message/sec
+All Connections
+6
+Live Connections
+6
+Topics
+5
+Subscriptions
+5
+1 Node
+Node Information
+View Nodes
+Node Name:
+emqx@172.18.0.4
+Uptime:
+11 minutes 9 seconds
+Connections:
+6
+Subscriptions:
+5
+Topics:
+5
+Node Role:
+core
+Version:
+5.8.0 (Open Source)
+File Descriptors Limit:
+1048576
+OS CPU Load:
+0.3/0.69/0.48
+OS Memory:
+Published Messages
+Received Messages
+Dropped Messages
+Connections
+Topics
+Subscriptions
+[FASE9] RECEIVED_FROM_PUB=False
+[SHOT] 06_Dos_Clientes_WebSocket.png
+=== CLIENTES EMQX ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Search
+Reset
+Select Column
+Kick Out
+Refresh
+Client ID
+Username
+Status
+IP Address
+Keepalive
+Clean Start/Clean Session
+Session Expiry Interval
+Connected At
+lab07_jeanfranco_pub
+Connected
+172.18.0.1:45254
+60
+true
+0
+2026-10-14 13:29:51
+ESP32_V3_INCIDENTE
+Connected
+172.18.0.5:47943
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V2_BLOQUE_B
+Connected
+172.18.0.5:50813
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V1_BLOQUE_A
+Connected
+172.18.0.5:52843
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_FISICO_UNT
+Connected
+172.18.0.5:34311
+60
+true
+0
+2026-10-14 13:07:53
+BACKEND_RULES_ENGINE
+Connected
+172.18.0.5:44863
+60
+true
+0
+2026-10-14 13:07:54
+=== CLIENTES EMQX (filtro lab07) ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Search
+Reset
+Select Column
+Kick Out
+Refresh
+Client ID
+Username
+Status
+IP Address
+Keepalive
+Clean Start/Clean Session
+Session Expiry Interval
+Connected At
+No Data
+[SHOT] 07_Clientes_EMQX.png
+=== TOPICS EMQX (sin filtro) ===
+Not Found
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+404
+This page could not be found
+=== TOPICS EMQX (filtro cistern/lab07/prueba) ===
+Not Found
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+404
+This page could not be found
+[SHOT] 08_Topico_EMQX.png
+=== LISTENERS TRAS PRUEBAS ===
+Listeners
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Add Listener
+Name
+Type
+Bind
+Enable
+Connections
+Acceptors
+default
+tcp
+0.0.0.0:1883
+5/Infinity
+16
+default
+ssl
+0.0.0.0:8883
+0/Infinity
+16
+default
+ws
+0.0.0.0:8083
+1/Infinity
+16
+default
+wss
+0.0.0.0:8084
+0/Infinity
+16
+[SHOT] 09_Listener_Con_Conexion.png
+[TELE] botones tras reconexion=['Upgrade', '', '', '', '', '', 'Disconnect', 'Subscribe', 'Publish']
+[TELE] suscripcion cistern/+/telemetry solicitada (PROPUESTA inicial)
+=== TELEMETRIA REAL ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/+/telemetry
+0
+2026-10-14 13:30:55
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792002657, "hardware_health": "OK", "metrics": {"turbidity_ntu": 30.28, "temperature_c": 22.39, "pin_voltage_v": 0.3}}
+2026-10-14 13:30:57
+cistern/ESP32_FISICO_UNT/telemetry
+0
+{"device_id": "ESP32_FISICO_UNT", "location": "Cisterna Comedor UNT", "timestamp": 1792002656, "hardware_health": "OK", "metrics": {"turbidity_ntu": 1.95, "temperature_c": 21.87, "pin_voltage_v": 2.997}}
+2026-10-14 13:30:57
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792002656, "hardware_health": "OK", "metrics": {"turbidity_ntu": 29.72, "temperature_c": 22.37, "pin_voltage_v": 0.3}}
+2026-10-14 13:30:56
+cistern/ESP32_V1_BLOQUE_A/telemetry
+0
+{"device_id": "ESP32_V1_BLOQUE_A", "location": "Cisterna_Principal_Bloque_A", "timestamp": 1792002655, "hardware_health": "OK", "metrics": {"turbidity_ntu": 1.88, "temperature_c": 20.89, "pin_voltage_v": 3.006}}
+2026-10-14 13:30:55
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792002655, "hardware_health": "OK", "metrics": {"turbidity_ntu": 29.88, "temperature_c": 22.44, "pin_voltage_v": 0.3}}
+2026-10-14 13:30:55
+Published
+Topic
+QoS
+Payload
+Time
+No Data
+[TELE] TELEMETRIA_RECIBIDA=True
+[SHOT] 10_Telemetria_Real.png
+RESULTADO_PARTE2: OK

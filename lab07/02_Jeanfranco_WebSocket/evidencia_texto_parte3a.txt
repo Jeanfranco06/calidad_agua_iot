@@ -1,0 +1,115 @@
+iniciando...
+[LOGIN] url=http://localhost:18083/#/dashboard/overview
+[SUB] botones=['Upgrade', '', '', '', '', '', 'Disconnect', 'Subscribe', 'Publish']
+[SUB] conectado y suscrito
+[PUB] botones=['Upgrade', '', '', '', '', '', 'Disconnect', 'Subscribe', 'Publish']
+=== PUB WINDOW ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+No Data
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+No Data
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 15:15:12
+=== SUB WINDOW ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 15:14:58
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 15:15:12
+Published
+Topic
+QoS
+Payload
+Time
+No Data
+[FASE9] RECEIVED_FROM_INDEPENDENT_PUB=True
+[SHOT] 06_Dos_Clientes_WebSocket.png
+RESULTADO_PARTE3A: OK

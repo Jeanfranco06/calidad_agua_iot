@@ -1,0 +1,182 @@
+[API CLIENT] {"clientid": "lab07_jeanfranco_sub", "proto_name": "MQTT", "proto_ver": 5, "ip_address": "172.18.0.1", "port": 53616, "keepalive": 60, "connected_at": "2026-10-14T21:16:27.288+00:00", "clean_start": true, "session_expiry_interval": null}
+[API CLIENT] {"clientid": "lab07_jeanfranco_pub", "proto_name": "MQTT", "proto_ver": 5, "ip_address": "172.18.0.1", "port": 40142, "keepalive": 60, "connected_at": "2026-10-14T21:16:41.310+00:00", "clean_start": true, "session_expiry_interval": null}
+[API SUBS] {"data":[{"node":"emqx@172.18.0.4","nl":0,"durable":false,"clientid":"lab07_jeanfranco_sub","topic":"cistern/lab07/prueba","qos":0,"rap":0,"rh":0}],"meta":{"count":1,"limit":100,"page":1,"hasnext":false}}
+[API LISTENER WS] {"id": "ws:default", "type": "ws", "bind": "0.0.0.0:8083", "acceptors": 16, "running": null, "max_connections": null}
+[API LISTENER WS FULL] {"id": "ws:default", "name": "default", "status": {"running": true, "max_connections": "infinity", "current_connections": 2}, "type": "ws", "bind": "0.0.0.0:8083", "number": 1, "enable": true, "node_status": [{"node": "emqx@172.18.0.4", "status": {"running": true, "max_connections": "infinity", "current_connections": 2}}], "acceptors": 16}
+=== CLIENTES (SIN FILTRO) ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Search
+Reset
+Select Column
+Kick Out
+Refresh
+Client ID
+Username
+Status
+IP Address
+Keepalive
+Clean Start/Clean Session
+Session Expiry Interval
+Connected At
+lab07_jeanfranco_sub
+Connected
+172.18.0.1:53616
+60
+true
+0
+2026-10-14 16:16:27
+lab07_jeanfranco_pub
+Connected
+172.18.0.1:40142
+60
+true
+0
+2026-10-14 16:16:41
+ESP32_V3_INCIDENTE
+Connected
+172.18.0.5:47943
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V2_BLOQUE_B
+Connected
+172.18.0.5:50813
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V1_BLOQUE_A
+Connected
+172.18.0.5:52843
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_FISICO_UNT
+Connected
+172.18.0.5:34311
+60
+true
+0
+2026-10-14 13:07:53
+BACKEND_RULES_ENGINE
+Connected
+172.18.0.5:44863
+60
+true
+0
+2026-10-14 13:07:54
+[SHOT] 07_Clientes_EMQX.png
+=== DETALLE lab07_jeanfranco_sub ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Back
+lab07_jeanfranco_sub
+Connection Info
+Status
+Connected
+Node emqx@172.18.0.4
+Client ID
+lab07_jeanfranco_sub
+Copy
+Username
+Protocol
+MQTT
+  v5.0
+Listener ws:default
+IP Address 172.18.0.1:53616
+Keepalive 60
+Clean Start true
+Bridge false
+Client Attributes
+View
+Connected At 2026-10-14 16:16:27
+Disconnected At
+(Current / Maximum)
+Session Info
+Session Expiry Interval
+0
+Created At
+2026-10-14 16:16:27
+Heap Size
+2586 bytes
+Subscriptions
+1/infinity
+Message Queue
+0/1000
+View Message
+Inflight
+0/32
+View Message
+QoS 2 Message Receive Queue
+0/100
+Metrics
+Bytes
+Bytes Received
+72
+Bytes Sent
+30
+Packets
+TCP Packets Received
+2
+TCP Packets Sent
+2
+MQTT Packets Received
+2
+MQTT Packets Sent
+2
+Messages
+Published Messages
+0
+QoS 0 Messages Published
+0
+QoS 1 Messages Published
+0
+QoS 2 Messages Published
+0
+Dropped Published Messages
+0
+Dropped Published Messages (Expired)
+0
+Messages Received
+0
+QoS 0 Messages Received
+0
+QoS 1 Messages Received
+0
+QoS 2 Messages Received
+0
+Dropped Incoming Messages
+0
+Dropped Incoming Messages (Expired)
+0
+Dropped Incoming Messages (Queue Full)
+0
+Dropped Incoming Messages (Oversize)
+0
+Subscriptions
+Refresh
+New Subscription
+Topic
+QoS
+No Local
+Retain as Published
+Retain Handling
+Actions
+cistern/lab07/prueba
+0
+False
+False
+0
+Unsubscribe
+RESULTADO_PARTE3C: OK

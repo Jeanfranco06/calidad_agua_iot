@@ -1,0 +1,128 @@
+conectado=True
+=== tras publicar #1 (para 04) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 18:05:45
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:48
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:48
+[SHOT] 04_Publicacion_JSON.png
+=== tras publicar #2 (para 05) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 18:05:45
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:53
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:48
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:53
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 18:05:48
+[SHOT] 05_Recepcion_MQTT.png
+RESULTADO_PARTE6: OK

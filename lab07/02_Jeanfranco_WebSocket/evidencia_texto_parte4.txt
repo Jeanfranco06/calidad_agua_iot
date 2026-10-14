@@ -1,0 +1,218 @@
+[A] sub conectado=True
+=== 04/05: scroll bottom ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 17:28:16
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:28:18
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:28:18
+[SHOT] 04_Publicacion_JSON.png (recapturada con tablas Published/Received visibles)
+[SHOT] 05_Recepcion_MQTT.png (recapturada)
+=== 10: telemetria ===
+erna_Principal_Bloque_A", "timestamp": 1792016909, "hardware_health": "OK", "metrics": {"turbidity_ntu": 1.88, "temperature_c": 20.65, "pin_voltage_v": 3.006}}
+2026-10-14 17:28:29
+cistern/ESP32_FISICO_UNT/telemetry
+0
+{"device_id": "ESP32_FISICO_UNT", "location": "Cisterna Comedor UNT", "timestamp": 1792016909, "hardware_health": "OK", "metrics": {"turbidity_ntu": 2.19, "temperature_c": 21.71, "pin_voltage_v": 2.965}}
+2026-10-14 17:28:29
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792016909, "hardware_health": "OK", "metrics": {"turbidity_ntu": 97.03, "temperature_c": 22.13, "pin_voltage_v": 0.3}}
+2026-10-14 17:28:29
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792016908, "hardware_health": "OK", "metrics": {"turbidity_ntu": 97.5, "temperature_c": 22.38, "pin_voltage_v": 0.3}}
+2026-10-14 17:28:28
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792016907, "hardware_health": "OK", "metrics": {"turbidity_ntu": 96.97, "temperature_c": 22.41, "pin_voltage_v": 0.3}}
+2026-10-14 17:28:27
+cistern/ESP32_V1_BLOQUE_A/telemetry
+0
+{"device_id": "ESP32_V1_BLOQUE_A", "location": "Cisterna_Principal_Bloque_A", "timestamp": 1792016906, "hardware_health": "OK", "metrics": {"turbidity_ntu": 1.89, "temperature_c": 20.81, "pin_voltage_v": 3.004}}
+2026-10-14 17:28:26
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792016906, "hardware_health": "OK", "metrics": {"turbidity_ntu": 97.14, "temperature_c": 22.48, "pin_voltage_v": 0.3}}
+2026-10-14 17:28:26
+cistern/ESP32_V2_BLOQUE_B/telemetry
+0
+{"device_id": "ESP32_V2_BLOQUE_B", "location": "Cisterna_Secundaria_Bloque_B", "timestamp": 1792016905, "hardware_health": "OK", "metrics": {"turbidity_ntu": 96.74, "temperature_c": 22.36, "pin_voltage_v": 0.3}}
+2026-10-14 17:28:25
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:28:18
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:28:18
+[SHOT] 10_Telemetria_Real.png (recapturada con payloads visibles)
+[B-SUB] conectado=True
+[B-PUB] conectado=True
+=== B: PUB (Published) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+No Data
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+No Data
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:29:33
+[B] SUB recibio del publicador independiente=True
+=== B: SUB (Received) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 17:29:03
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 17:29:33
+Published
+Topic
+QoS
+Payload
+Time
+No Data
+[SHOT] 06_Dos_Clientes_WebSocket.png (recompuesta con dos instancias)
+RESULTADO_PARTE4: OK

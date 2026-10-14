@@ -1,0 +1,265 @@
+iniciando parte3b...
+[LOGIN] url=http://localhost:18083/#/dashboard/overview
+[SUB] conectado+suscrito
+[PUB] conectado
+=== CLIENTES (general) ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Search
+Reset
+Select Column
+Kick Out
+Refresh
+Client ID
+Username
+Status
+IP Address
+Keepalive
+Clean Start/Clean Session
+Session Expiry Interval
+Connected At
+lab07_jeanfranco_sub
+Connected
+172.18.0.1:56162
+60
+true
+0
+2026-10-14 15:17:16
+lab07_jeanfranco_pub
+Connected
+172.18.0.1:59892
+60
+true
+0
+2026-10-14 15:17:29
+ESP32_V3_INCIDENTE
+Connected
+172.18.0.5:47943
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V2_BLOQUE_B
+Connected
+172.18.0.5:50813
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_V1_BLOQUE_A
+Connected
+172.18.0.5:52843
+60
+true
+0
+2026-10-14 13:07:53
+ESP32_FISICO_UNT
+Connected
+172.18.0.5:34311
+60
+true
+0
+2026-10-14 13:07:53
+BACKEND_RULES_ENGINE
+Connected
+172.18.0.5:44863
+60
+true
+0
+2026-10-14 13:07:54
+=== CLIENTES (filtro lab07) ===
+Clients
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Search
+Reset
+Select Column
+Kick Out
+Refresh
+Client ID
+Username
+Status
+IP Address
+Keepalive
+Clean Start/Clean Session
+Session Expiry Interval
+Connected At
+No Data
+[SHOT] 07_Clientes_EMQX.png
+=== TOPICS (general) ===
+Subscriptions
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Subscriptions
+Topics
+Search
+Reset
+Refresh
+Client ID
+Topic
+QoS
+No Local
+Retain as Published
+Retain Handling
+lab07_jeanfranco_sub
+cistern/lab07/prueba
+0
+False
+False
+0
+ESP32_V3_INCIDENTE
+cistern/ESP32_V3_INCIDENTE/commands
+1
+False
+False
+0
+ESP32_V2_BLOQUE_B
+cistern/ESP32_V2_BLOQUE_B/commands
+1
+False
+False
+0
+ESP32_V1_BLOQUE_A
+cistern/ESP32_V1_BLOQUE_A/commands
+1
+False
+False
+0
+ESP32_FISICO_UNT
+cistern/ESP32_FISICO_UNT/commands
+1
+False
+False
+0
+BACKEND_RULES_ENGINE
+cistern/+/telemetry
+1
+False
+False
+0
+=== TOPICS (filtro) ===
+Subscriptions
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Subscriptions
+Topics
+Search
+Reset
+Refresh
+Client ID
+Topic
+QoS
+No Local
+Retain as Published
+Retain Handling
+lab07_jeanfranco_sub
+cistern/lab07/prueba
+0
+False
+False
+0
+[SHOT] 08_Topico_EMQX.png
+=== LISTENERS (clientes WS vivos) ===
+Listeners
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Add Listener
+Name
+Type
+Bind
+Enable
+Connections
+Acceptors
+default
+tcp
+0.0.0.0:1883
+5/Infinity
+16
+default
+ssl
+0.0.0.0:8883
+0/Infinity
+16
+default
+ws
+0.0.0.0:8083
+2/Infinity
+16
+default
+wss
+0.0.0.0:8084
+0/Infinity
+16
+[SHOT] 09_Listener_Con_Conexion.png
+=== CLI clients list ===
+Client(lab07_jeanfranco_pub, username=, peername=172.18.0.1:59892, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=0, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792009049159, connected_at=1792009049159)
+Client(ESP32_V1_BLOQUE_A, username=undefined, peername=172.18.0.5:52843, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792001273886, connected_at=1792001273886)
+Client(ESP32_V3_INCIDENTE, username=undefined, peername=172.18.0.5:47943, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=2, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792001273886, connected_at=1792001273886)
+Client(ESP32_FISICO_UNT, username=undefined, peername=172.18.0.5:34311, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792001273892, connected_at=1792001273892)
+Client(BACKEND_RULES_ENGINE, username=undefined, peername=172.18.0.5:44863, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=2194, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792001274001, connected_at=1792001274001)
+Client(ESP32_V2_BLOQUE_B, username=undefined, peername=172.18.0.5:50813, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=1, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792001273885, connected_at=1792001273886)
+Client(lab07_jeanfranco_sub, username=, peername=172.18.0.1:56162, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792009036891, connected_at=1792009036893)
+
+=== CLI topics list ===
+cistern/lab07/prueba -> emqx@172.18.0.4
+cistern/ESP32_V3_INCIDENTE/commands -> emqx@172.18.0.4
+cistern/ESP32_V1_BLOQUE_A/commands -> emqx@172.18.0.4
+cistern/ESP32_V2_BLOQUE_B/commands -> emqx@172.18.0.4
+cistern/ESP32_FISICO_UNT/commands -> emqx@172.18.0.4
+cistern/+/telemetry -> emqx@172.18.0.4
+
+=== CLI listeners ===
+tcp:default
+  listen_on       : 0.0.0.0:1883
+  acceptors       : 16
+  proxy_protocol  : false
+  enbale          : true
+  running         : true
+  current_conn    : 5
+  max_conns       : infinity
+  shutdown_count  : [{tcp_closed,1}]
+ssl:default
+  listen_on       : 0.0.0.0:8883
+  acceptors       : 16
+  proxy_protocol  : false
+  enbale          : true
+  running         : true
+  current_conn    : 0
+  max_conns       : infinity
+  shutdown_count  : []
+ws:default
+  listen_on       : 0.0.0.0:8083
+  acceptors       : 16
+  proxy_protocol  : false
+  enbale          : true
+  running         : true
+  current_conn    : 2
+  max_conns       : infinity
+  shutdown_count  : []
+wss:default
+  listen_on       : 0.0.0.0:8084
+  acceptors       : 16
+  proxy_protocol  : false
+  enbale          : true
+  running         : true
+  current_conn    : 0
+  max_conns       : infinity
+  shutdown_count  : []
+
+RESULTADO_PARTE3B: OK

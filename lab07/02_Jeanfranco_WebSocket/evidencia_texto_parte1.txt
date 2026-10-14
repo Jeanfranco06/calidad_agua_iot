@@ -1,0 +1,270 @@
+[LOGIN] url=http://localhost:18083/#/dashboard/overview
+=== FASE 2: PAGINA LISTENERS ===
+Listeners
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Add Listener
+Name
+Type
+Bind
+Enable
+Connections
+Acceptors
+default
+tcp
+0.0.0.0:1883
+5/Infinity
+16
+default
+ssl
+0.0.0.0:8883
+0/Infinity
+16
+default
+ws
+0.0.0.0:8083
+0/Infinity
+16
+default
+wss
+0.0.0.0:8084
+0/Infinity
+16
+[SHOT] 01_Listener_WebSocket.png
+[WS] inputs=17
+[WS] clientId -> lab07_jeanfranco_sub
+[WS] host=localhost port=8083 path=/mqtt
+[WS] keepalive=60 cleanStart=true expiry=0 tls=false proto=MQTT 5
+=== TRAS CONNECT ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+No Data
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+No Data
+Published
+Topic
+QoS
+Payload
+Time
+No Data
+[WS] botones=['Upgrade', '', '', '', '', '', 'Disconnect', 'Subscribe', 'Publish']
+[WS] CONNECTED=True
+[SHOT] 02_Conexion_WebSocket.png
+[SUB] topic=cistern/lab07/prueba qos=0
+=== TRAS SUBSCRIBE ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 13:28:19
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+No Data
+Published
+Topic
+QoS
+Payload
+Time
+No Data
+[SHOT] 03_Suscripcion_MQTT.png
+[PUB] topic=cistern/lab07/prueba
+[PUB] payload={"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+=== TRAS PUBLISH (captura 04) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 13:28:19
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 13:28:25
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 13:28:25
+[SHOT] 04_Publicacion_JSON.png
+=== TRAS RECEPCION (captura 05) ===
+WebSocket Client
+Quick Find
+Ctrl
+K
+Upgrade
+Aadmin
+Default
+Connection
+Host
+Port
+Path
+Client ID
+Username
+Password
+Keepalive
+Clean Start
+Session Expiry Interval
+s
+TLS
+ProtocolVersion
+Disconnect
+Subscription
+Topic
+QoS
+Subscribe
+Topic
+QoS
+Time
+Actions
+cistern/lab07/prueba
+0
+2026-10-14 13:28:19
+Cancel
+Publish
+Topic
+Payload
+QoS
+Retain
+Publish
+Received
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 13:28:25
+Published
+Topic
+QoS
+Payload
+Time
+cistern/lab07/prueba
+0
+{"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+2026-10-14 13:28:25
+[RECV] RECEIVED=True
+[SHOT] 05_Recepcion_MQTT.png
+[RECV] campos verificados={'device_id': True, 'tipo': True, 'mensaje': True, 'valor': True, 'unidad': True, 'origen': True, 'estado': True}
+PAYLOAD_JSON={"device_id":"LAB07_TEST","tipo":"prueba_websocket","mensaje":"Prueba MQTT WebSocket exitosa","valor":25.5,"unidad":"NTU","origen":"Jeanfranco","estado":"TEST"}
+RESULTADO_PARTE1: OK
