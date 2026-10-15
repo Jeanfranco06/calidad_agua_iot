@@ -101,3 +101,33 @@ En EMQX 5.8, el WebSocket del Dashboard usó exactamente estos parámetros y fun
 3. Compatibilidad MQTT 3.1.1 desde PHP: el broker la soporta; no fue probada en esta etapa (la prueba se hizo con MQTT 5).
 4. Persistencia de sesión (`Clean Start=false`, Session Expiry>0) para suscriptores web: no probada.
 5. Comportamiento ante reconexión del suscriptor web y mensajes perdidos (QoS 0 no garantiza entrega): definir con el equipo durante integración.
+6. Activación de autenticación/autorización MySQL en EMQX: NO realizada en esta etapa (afectaría clientes actuales; requiere autorización del equipo).
+
+## G. MySQL — PREPARACIÓN PARA AUTENTICACIÓN/ACL (SOLO PREPARACIÓN, NO ACTIVA)
+
+Validado el 14/10/2026 sobre `mysql_server` (MySQL 8.0, host `localhost:3307`):
+
+### G.1 Estado del esquema de negocio (`emqx_db`) — CONFIRMADO (solo lectura)
+
+| Tabla | Registros | Observación |
+|---|---|---|
+| `dispositivos` | 4 | Los 4 nodos del proyecto |
+| `telemetria` | 8 131+ (creciendo) | Flujo activo desde el motor de reglas |
+| `bitacora_ordenes_mqtt` | 8 | Órdenes emitidas a nodos |
+
+Últimas filas de `telemetria` con datos reales (temperatura, turbidez, voltaje, alerta). **No se modificó ninguna tabla de `emqx_db`.**
+
+### G.2 Esquema de preparación (`lab07_prep`) — creado, NO conectado a EMQX
+
+Se creó el esquema **`lab07_prep`** con tablas en formato compatible con los conectores de autenticación/autorización de EMQX (documentación EMQX 5.x):
+
+- **`mqtt_auth_user`**: `username`, `password_hash`, `salt`, `is_superuser`, `note` — 4 registros de prueba (`web_pub_daniel`, `web_sub_daniel`, `lab07_jeanfranco_sub`, `lab07_jeanfranco_pub`). Los hashes son **placeholders no activos** (`PLACEHOLDER_HASH_NO_ACTIVO`): deben generarse con `emqx ctl` (bcrypt) al momento de habilitar.
+- **`mqtt_auth_acl`**: `login`, `action`, `permission`, `topic` — 6 reglas: publicación permitida solo en `cistern/lab07/prueba` para los usuarios web; suscripción permitida a `cistern/lab07/prueba` y `cistern/+/telemetry`; **denegado** publicar telemetría (`cistern/+/telemetry`) desde los usuarios web.
+
+Script reproducible: `lab07_prep_auth.sql` (en esta misma carpeta). Evidencia de validación: `evidencia_texto_parte7_mysql.txt`.
+
+### G.3 IMPORTANTE — estado de activación
+
+- EMQX **no** fue configurado para usar `lab07_prep`. La autenticación MQTT sigue siendo anónima (como en las pruebas WebSocket). CONFIRMADO.
+- Habilitar el conector MySQL de autenticación/autorización en EMQX **cambia el comportamiento global del broker** y podría desconectar clientes existentes: requiere autorización del equipo y ventana de mantenimiento. **PENDIENTE — no hacer sin coordinación.**
+- Hasta que se active, `publicacion.php` y `suscritor.php` deben conectarse **sin usuario ni contraseña** (parámetros de la sección A).

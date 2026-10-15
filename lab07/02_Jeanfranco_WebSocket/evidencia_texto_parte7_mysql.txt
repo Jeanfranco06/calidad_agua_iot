@@ -1,0 +1,8 @@
+﻿telemetria_total
+8358
+ultima_telemetria
+2026-10-15 00:35:00
+ordenes
+8
+Database (lab07_prep)
+lab07_prep

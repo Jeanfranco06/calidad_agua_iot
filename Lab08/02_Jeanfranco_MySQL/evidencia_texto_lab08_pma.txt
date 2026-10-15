@@ -1,0 +1,242 @@
+[SHOT] 11_Prueba_Integridad.png
+NAME                IMAGE                            COMMAND                  SERVICE         CREATED        STATUS       PORTS
+emqx_broker         emqx/emqx:5.8.0                  "/usr/bin/docker-entâ€¦"   emqx            31 hours ago   Up 2 hours   0.0.0.0:1883->1883/tcp, [::]:1883->1883/tcp, 0.0.0.0:8083->8083/tcp, [::]:8083->8083/tcp, 0.0.0.0:18083->18083/tcp, [::]:18083->18083/tcp
+iot_virtual_nodes   calidad_agua_iot-virtual_nodes   "python simulator.py"    virtual_nodes   31 hours ago   Up 2 hours   
+mysql_server        mysql:8.0                        "docker-entrypoint.sâ€¦"   mysql           31 hours ago   Up 2 hours   0.0.0.0:3307->3306/tcp, [::]:3307->3306/tcp
+phpmyadmin_gui      phpmyadmin/phpmyadmin:latest     "/docker-entrypoint.â€¦"   phpmyadmin      31 hours ago   Up 2 hours   0.0.0.0:8080->80/tcp, [::]:8080->80/tcp
+
+[SHOT] 12_Estado_Final.png
+[PMA] url inicial (auto-login por PMA_USER/PMA_PASSWORD): http://localhost:8080/ | localhost:8080 / mysql | phpMyAdmin 5.2.3
+[PMA] estructura emqx_db:
+←
+Reciente
+Favoritas
+emqx_db
+Nueva
+bitacora_ordenes_mqtt
+dispositivos
+mqtt_acl
+mqtt_user
+telemetria
+information_schema
+performance_schema
+
+Servidor: mysql
+Base de datos: emqx_db
+ Estructura
+(actual)
+ SQL
+ Buscar
+ Generar una consulta
+ Exportar
+ Importar
+ Operaciones
+ Rutinas
+ Eventos
+ Disparadores
+ Diseñador
+Consola
+
+
+
+
+
+Filtros
+Que contengan la palabra:
+Tabla Acción Filas Tipo Cotejamiento Tamaño Residuo a depurar
+bitacora_ordenes_mqtt    Examinar  Estructura  Buscar  Insertar  Vaciar  Eliminar 8 InnoDB utf8mb4_0900_ai_ci 32.0 KB -
+dispositivos    Examinar  Estructura  Buscar  Insertar  Vaciar  Eliminar 4 InnoDB utf8mb4_0900_ai_ci 16.0 KB -
+mqtt_acl    Examinar  Estructura  Buscar  Insertar  Vaciar  Eliminar 2 InnoDB utf8mb4_0900_ai_ci 32.0 KB -
+mqtt_user    Examinar  Estructura  Buscar  Insertar  Vaciar  Eliminar 1 InnoDB utf8mb4_0900_ai_ci 32.0 KB -
+telemetria    Examinar  Estructura  Buscar  Insertar  Vaciar  Eliminar 14,336 InnoDB utf8mb4_0900_ai_ci 2.0 MB -
+5 tablas Número de filas 14,351 InnoDB utf8mb4_0900_ai_ci 2.1 MB 0 B
+Seleccionar todo 
+        
+Para los elementos que están marcados:
+        Copiar tabla
+        Mostrar creación
+        Exportar
+                     Vaciar
+Eliminar
+             Analizar la tabla
+Revisar la tabla
+Tabla de suma de comprobación
+Optimizar la tabla
+Reparar la tabla
+             Agregar prefijo a la tabla
+Reemplazar prefijo de la tabla
+Copiar tabla con prefijo
+                      Imprimir  Diccionario de datos
+ Crear nueva tabla
+Nombr
+[SHOT_TMP] _pma_structure.png
+[PMA] mqtt_user browse clicked=True url=http://localhost:8080/index.php?route=/sql&db=emqx_db&table=mqtt_user&pos=0
+[PMA] mqtt_user cuerpo:
+←
+Reciente
+Favoritas
+emqx_db
+Nueva
+bitacora_ordenes_mqtt
+dispositivos
+mqtt_acl
+mqtt_user
+telemetria
+information_schema
+performance_schema
+
+Servidor: mysql
+Base de datos: emqx_db
+Tabla: mqtt_user
+ Examinar
+(actual)
+ Estructura
+ SQL
+ Buscar
+ Insertar
+ Exportar
+ Importar
+ Operaciones
+ Disparadores
+Consola
+
+
+
+
+
+Mostrando filas 0 - 0 (total de 1, La consulta tardó 0.0014 segundos.)
+SELECT * FROM `mqtt_user`
+Perfilando [ Editar en línea ] [ Editar ] [ Explicar SQL ] [ Crear código PHP ] [ Actualizar ]
+Mostrar todo | Número de filas: 
+                                                          
+25
+                              50
+                              100
+                              250
+                              500
+                           Filtrar filas:
+Opciones extra
+id
+username
+password_hash
+salt
+is_superuser
+enabled
+created
+ Editar
+ Copiar
+ Borrar
+1
+lab08_jeanfranco
+$2b$10$g0Jeo...[OCULTO]
+NULL
+0
+1
+2026-10-15 02:09:52
+Seleccionar todo Para los elementos que están marcados:  Editar  Copiar  Borrar  Exportar
+Mostrar todo | Número de filas: 
+                                                          
+25
+                              50
+                              100
+                              250
+                              500
+                           Filtrar filas:
+Operaciones sobre los resultados de la consulta
+ Imprimir  Copiar al portapapeles  Exportar  Mostrar gráfico  Crear vista
+[SHOT_TMP] _pma_user.png
+[PMA] mqtt_acl browse clicked=True url=http://localhost:8080/index.php?route=/sql&db=emqx_db&table=mqtt_acl&pos=0
+[PMA] mqtt_acl cuerpo:
+←
+Reciente
+Favoritas
+emqx_db
+Nueva
+bitacora_ordenes_mqtt
+dispositivos
+mqtt_acl
+mqtt_user
+telemetria
+information_schema
+performance_schema
+
+Servidor: mysql
+Base de datos: emqx_db
+Tabla: mqtt_acl
+ Examinar
+(actual)
+ Estructura
+ SQL
+ Buscar
+ Insertar
+ Exportar
+ Importar
+ Operaciones
+ Disparadores
+Consola
+
+
+
+
+
+Mostrando filas 0 - 1 (total de 2, La consulta tardó 0.0004 segundos.)
+SELECT * FROM `mqtt_acl`
+Perfilando [ Editar en línea ] [ Editar ] [ Explicar SQL ] [ Crear código PHP ] [ Actualizar ]
+Mostrar todo | Número de filas: 
+                                                          
+25
+                              50
+                              100
+                              250
+                              500
+                           Filtrar filas: Ordenar según la clave: 
+                                  
+PRIMARY (ASC)
+                                  PRIMARY (DESC)
+                                  idx_username (ASC)
+                                  idx_username (DESC)
+                                  Ninguna
+                               Opciones extra
+id
+ipaddress
+username
+clientid
+action
+permission
+topic
+qos
+retain
+ Editar
+ Copiar
+ Borrar
+1
+lab08_jeanfranco
+publish
+allow
+cistern/LAB08_TEST/telemetry
+NULL
+NULL
+ Editar
+ Copiar
+ Borrar
+2
+lab08_jeanfranco
+subscribe
+allow
+cistern/LAB08_TEST/#
+NULL
+NULL
+Seleccionar todo Para los elementos que están marcados:  Editar  Copiar  Borrar  Exportar
+Mostrar todo | Número de filas: 
+                                                          
+25
+                              50
+                              100
+                              250
+                              500
+                           Filtrar filas: Ordenar según la clave: 
+                                  
+PRIMARY (ASC)
+                       
+[SHOT_TMP] _pma_acl.png
+[SHOT] 09_Verificacion_phpMyAdmin.png
