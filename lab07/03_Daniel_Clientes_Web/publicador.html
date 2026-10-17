@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publicador Web MQTT — Lab 07 Daniel</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/mqtt.min.js"></script>
+  <script src="shared.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">
+        <h1><span>📡</span> Publicador Web MQTT (mqtt.js)</h1>
+        <p>Laboratorio 07 — Apartado 4.1.4 | Integrante: Daniel</p>
+      </div>
+      <div class="nav-links">
+        <a href="publicador.html" style="border-color: var(--accent-blue);">Publicador</a>
+        <a href="suscriptor.html">Ir al Suscriptor</a>
+      </div>
+    </header>
+
+    <!-- 1. Configuración de Conexión -->
+    <section class="card">
+      <div class="card-title">
+        <span>Conexión al Broker EMQX (WebSocket)</span>
+        <span id="connBadge" class="badge badge-disconnected">DESCONECTADO</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="brokerUrl">URL WebSocket del Broker:</label>
+          <input type="text" id="brokerUrl" value="ws://localhost:8083/mqtt" placeholder="ws://localhost:8083/mqtt">
+        </div>
+
+        <div class="form-group">
+          <label for="clientId">Client ID (Único):</label>
+          <input type="text" id="clientId" readonly>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="mqttUser">Usuario MQTT (Authn):</label>
+          <input type="text" id="mqttUser" value="web_pub_daniel" placeholder="web_pub_daniel" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="mqttPass">Contraseña MQTT (Authn):</label>
+          <input type="password" id="mqttPass" placeholder="Ingresa contraseña de publicador" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="info-box">
+        Protocolo: <strong>MQTT v5.0</strong> (<code>protocolVersion: 5</code>) | Transporte: <strong>WebSockets (WS)</strong> | Path: <code>/mqtt</code> | Keepalive: 60s | Clean Start: true
+      </div>
+
+      <div class="btn-group">
+        <button id="btnConnect" class="btn btn-primary" onclick="iniciarConexion()">
+          <span>🔌</span> Conectar al Broker
+        </button>
+        <button id="btnDisconnect" class="btn btn-danger" onclick="desconectarBroker()" disabled>
+          <span>⏹️</span> Desconectar
+        </button>
+        <button id="btnRegenId" class="btn btn-secondary" onclick="regenerarClientId()">
+          <span>🔄</span> Nuevo Client ID
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. Publicación de Mensajes -->
+    <section class="card">
+      <div class="card-title">
+        <span>Emisión de Telemetría de Prueba (QoS 0 / QoS 1)</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="pubTopic">Tópico de Publicación (Fijo para Pruebas Aisladas):</label>
+          <input type="text" id="pubTopic" value="cistern/lab07/prueba" readonly>
+        </div>
+
+        <div class="form-group">
+          <label for="qosSelect">Calidad de Servicio (QoS):</label>
+          <select id="qosSelect">
+            <option value="0" selected>QoS 0 — At most once (Envío simple sin confirmación broker)</option>
+            <option value="1">QoS 1 — At least once (Con entrega confirmada por broker)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="jsonEditor">Carga Útil JSON (Payload — Contrato Lab 07):</label>
+        <textarea id="jsonEditor" class="code-editor" spellcheck="false"></textarea>
+      </div>
+
+      <div class="warn-box">
+        ⚠️ <strong>Restricción del Formulario (Aislamiento de Prueba):</strong> La publicación se realiza en <code>cistern/lab07/prueba</code> con bandera <code>retain: false</code> para no alterar el motor de reglas ni contaminar las series temporales de la base de datos del entorno de telemetría simulada.
+      </div>
+
+      <div id="pubErrorBanner" style="display: none; background-color: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; padding: 10px; border-radius: 6px; margin-bottom: 14px; font-size: 0.85rem;"></div>
+
+      <div class="btn-group">
+        <button id="btnPublish" class="btn btn-success" onclick="publicarMensaje()" disabled>
+          <span>📤</span> Publicar Mensaje
+        </button>
+        <button id="btnFormatJson" class="btn btn-secondary" onclick="formatearJsonEditor()">
+          <span>✨</span> Formatear / Validar JSON
+        </button>
+        <button id="btnResetJson" class="btn btn-secondary" onclick="cargarPayloadEjemplo()">
+          <span>📋</span> Restaurar Ejemplo TEST
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. Bitácora de Despacho Local -->
+    <section class="card">
+      <div class="card-title">
+        <span>Bitácora de Eventos y Confirmación Local de Despacho</span>
+        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="limpiarLog()">
+          Limpiar Log
+        </button>
+      </div>
+      <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 10px;">
+        Nota: La confirmación indica despacho local exitoso hacia el broker EMQX. No constituye acuse de recibo del suscriptor web final.
+      </p>
+      <div id="logContainer" class="log-container">
+        <!-- Las entradas se agregan dinámicamente -->
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Estado del cliente
+    let client = null;
+    let manualDisconnect = false;
+    let isConnecting = false;
+
+    const PREFIX = "web_pub_daniel";
+    const logBox = document.getElementById("logContainer");
+    const connBadge = document.getElementById("connBadge");
+    const btnConnect = document.getElementById("btnConnect");
+    const btnDisconnect = document.getElementById("btnDisconnect");
+    const btnPublish = document.getElementById("btnPublish");
+    const btnRegenId = document.getElementById("btnRegenId");
+    const clientIdInput = document.getElementById("clientId");
+    const brokerUrlInput = document.getElementById("brokerUrl");
+    const jsonEditor = document.getElementById("jsonEditor");
+    const qosSelect = document.getElementById("qosSelect");
+
+    // Payload de ejemplo validado según contrato técnico
+    const EJEMPLO_PAYLOAD = {
+      device_id: "LAB07_TEST",
+      tipo: "prueba_websocket",
+      mensaje: "Prueba MQTT WebSocket exitosa desde publicador Daniel",
+      valor: 25.5,
+      unidad: "NTU",
+      origen: "Daniel_Web_Publisher",
+      estado: "TEST"
+    };
+
+    function regenerarClientId() {
+      if (client && client.connected) {
+        alert("Desconéctate antes de cambiar el Client ID.");
+        return;
+      }
+      clientIdInput.value = generateClientId(PREFIX);
+    }
+
+    function cargarPayloadEjemplo() {
+      const copy = { ...EJEMPLO_PAYLOAD, timestamp: Math.floor(Date.now() / 1000) };
+      jsonEditor.value = JSON.stringify(copy, null, 2);
+    }
+
+    function formatearJsonEditor() {
+      const raw = jsonEditor.value.trim();
+      const val = validateJson(raw);
+      const errBanner = document.getElementById("pubErrorBanner");
+      if (val.valid) {
+        if (errBanner) errBanner.style.display = "none";
+        jsonEditor.value = JSON.stringify(val.parsed, null, 2);
+        appendSafeLog(logBox, {
+          type: "info",
+          meta: `[VALIDACIÓN] ${formatTimestamp()}`,
+          text: "Sintaxis JSON válida y correctamente estructurada."
+        });
+      } else {
+        if (errBanner) {
+          errBanner.style.display = "block";
+          errBanner.textContent = `Error en el formato JSON: ${val.error}`;
+        }
+        appendSafeLog(logBox, {
+          type: "error",
+          meta: `[ERROR SINTAXIS] ${formatTimestamp()}`,
+          text: `El payload no es un JSON válido: ${val.error}`
+        });
+      }
+    }
+
+    const mqttUserInput = document.getElementById("mqttUser");
+    const mqttPassInput = document.getElementById("mqttPass");
+
+    function iniciarConexion() {
+      if (client && (client.connected || isConnecting)) {
+        console.warn("Conexión ya iniciada o en progreso.");
+        return;
+      }
+
+      const brokerUrl = brokerUrlInput.value.trim();
+      const clientId = clientIdInput.value.trim();
+      const username = mqttUserInput.value.trim();
+      const password = mqttPassInput.value;
+
+      if (!brokerUrl) {
+        alert("Por favor ingresa la URL WebSocket del broker.");
+        return;
+      }
+
+      manualDisconnect = false;
+      isConnecting = true;
+
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+      btnRegenId.disabled = true;
+      brokerUrlInput.disabled = true;
+      mqttUserInput.disabled = true;
+      mqttPassInput.disabled = true;
+
+      updateStatusBadge(connBadge, "reconnecting", "CONECTANDO...");
+      appendSafeLog(logBox, {
+        type: "info",
+        meta: `[INTENTO DE CONEXIÓN] ${formatTimestamp()}`,
+        text: `Iniciando sesión MQTT v5 en ${brokerUrl} con Client ID: ${clientId} y Usuario: ${username || "(anónimo)"}`
+      });
+
+      // Opciones de conexión conformes a MQTT 5.0 y WebSocket
+      const options = {
+        clientId: clientId,
+        protocolVersion: 5, // MQTT 5.0
+        clean: true,
+        keepalive: 60,
+        reconnectPeriod: 3000,
+        connectTimeout: 8000,
+        resubscribe: false
+      };
+
+      if (username) {
+        options.username = username;
+      }
+      if (password) {
+        options.password = password;
+      }
+
+      try {
+        client = mqtt.connect(brokerUrl, options);
+
+        // Evento: connect
+        client.on("connect", (connack) => {
+          isConnecting = false;
+          updateStatusBadge(connBadge, "connected", "CONECTADO");
+          btnPublish.disabled = false;
+          appendSafeLog(logBox, {
+            type: "success",
+            meta: `[EVENTO: connect] ${formatTimestamp()}`,
+            text: `Conexión establecida exitosamente con el broker. (SessionPresent: ${connack ? connack.sessionPresent : false})`
+          });
+        });
+
+        // Evento: reconnect
+        client.on("reconnect", () => {
+          if (manualDisconnect) return;
+          updateStatusBadge(connBadge, "reconnecting", "RECONECTANDO...");
+          appendSafeLog(logBox, {
+            type: "warn",
+            meta: `[EVENTO: reconnect] ${formatTimestamp()}`,
+            text: "Reintentando conexión automática con el broker EMQX..."
+          });
+        });
+
+        // Evento: error
+        client.on("error", (err) => {
+          isConnecting = false;
+          const msg = (err.message || "").toLowerCase();
+          const isAuthFailure = msg.includes("not authorized") || msg.includes("bad user") || msg.includes("connack") || err.code === 4 || err.code === 5 || err.code === 134 || err.code === 135;
+
+          if (isAuthFailure) {
+            updateStatusBadge(connBadge, "error", "RECHAZO DE CREDENCIALES");
+            appendSafeLog(logBox, {
+              type: "error",
+              meta: `[ERROR AUTENTICACIÓN PERMANENTE] ${formatTimestamp()}`,
+              text: `Rechazo definitivo de credenciales por el broker: ${err.message || err}. Reconexión cancelada.`
+            });
+            // Detener bucle de reintento indefinido
+            client.end(true);
+            btnConnect.disabled = false;
+            btnDisconnect.disabled = true;
+            btnPublish.disabled = true;
+            btnRegenId.disabled = false;
+            brokerUrlInput.disabled = false;
+            mqttUserInput.disabled = false;
+            mqttPassInput.disabled = false;
+          } else {
+            updateStatusBadge(connBadge, "error", "ERROR");
+            appendSafeLog(logBox, {
+              type: "error",
+              meta: `[EVENTO: error] ${formatTimestamp()}`,
+              text: `Error de transporte o cliente MQTT: ${err.message || err}`
+            });
+          }
+        });
+
+        // Evento: close
+        client.on("close", () => {
+          isConnecting = false;
+          btnPublish.disabled = true;
+          if (manualDisconnect) {
+            updateStatusBadge(connBadge, "disconnected", "DESCONECTADO");
+            appendSafeLog(logBox, {
+              type: "info",
+              meta: `[EVENTO: close] ${formatTimestamp()}`,
+              text: "Sesión cerrada por el usuario. Reconexión automática desactivada."
+            });
+          } else {
+            updateStatusBadge(connBadge, "reconnecting", "CERRADO / REINTENTANDO");
+            appendSafeLog(logBox, {
+              type: "warn",
+              meta: `[EVENTO: close] ${formatTimestamp()}`,
+              text: "Canal WebSocket cerrado. Si no fue por fallo permanente de credenciales, el cliente reintentará."
+            });
+          }
+        });
+
+        // Evento: offline
+        client.on("offline", () => {
+          btnPublish.disabled = true;
+          updateStatusBadge(connBadge, "reconnecting", "OFFLINE");
+          appendSafeLog(logBox, {
+            type: "warn",
+            meta: `[EVENTO: offline] ${formatTimestamp()}`,
+            text: "El cliente ha pasado a estado offline (sin red o broker no disponible)."
+          });
+        });
+
+        // Evento: packetreceive (observabilidad MQTT)
+        client.on("packetreceive", (packet) => {
+          if (!packet) return;
+
+          if (packet.cmd === "connack") {
+            const reasonCode = packet.reasonCode !== undefined ? packet.reasonCode : packet.returnCode;
+            if (reasonCode && reasonCode >= 128) {
+              appendSafeLog(logBox, {
+                type: "error",
+                meta: `[MQTT CONNACK: RECHAZO] ${formatTimestamp()} | ReasonCode: ${reasonCode} (0x${reasonCode.toString(16)})`,
+                text: `Conexión rechazada por EMQX 5.8: código ${reasonCode} (${reasonCode === 134 ? 'Bad username or password' : (reasonCode === 135 ? 'Not authorized' : 'Connection refused')}). Cancelando reconexión.`
+              });
+              updateStatusBadge(connBadge, "error", "ACCESO DENEGADO");
+              client.end(true);
+              isConnecting = false;
+              btnConnect.disabled = false;
+              btnDisconnect.disabled = true;
+              btnPublish.disabled = true;
+              btnRegenId.disabled = false;
+              brokerUrlInput.disabled = false;
+              mqttUserInput.disabled = false;
+              mqttPassInput.disabled = false;
+            }
+          } else if (packet.cmd === "puback") {
+            const reasonCode = packet.reasonCode !== undefined ? packet.reasonCode : 0;
+            if (reasonCode >= 128) {
+              appendSafeLog(logBox, {
+                type: "error",
+                meta: `[MQTT PUBACK: RECHAZO ACL] ${formatTimestamp()} | ReasonCode: ${reasonCode} (0x${reasonCode.toString(16)}) | MessageId: ${packet.messageId}`,
+                text: `Publicación rechazada por política de autorización (ACL) de EMQX 5.8 (ReasonCode: ${reasonCode} - Not authorized).`
+              });
+            } else {
+              appendSafeLog(logBox, {
+                type: "success",
+                meta: `[MQTT PACKET: PUBACK OK] ${formatTimestamp()} | MessageId: ${packet.messageId} | ReasonCode: ${reasonCode}`,
+                text: `Acuse de recibo PUBACK exitoso recibido desde el broker EMQX para el mensaje QoS 1 (MessageId: ${packet.messageId}).`
+              });
+            }
+          }
+        });
+
+      } catch (ex) {
+        isConnecting = false;
+        desconectarBroker();
+        alert(`Fallo crítico al inicializar cliente MQTT: ${ex.message}`);
+      }
+    }
+
+    function desconectarBroker() {
+      manualDisconnect = true;
+      isConnecting = false;
+
+      if (client) {
+        // Remover listeners para evitar callbacks huérfanos
+        client.removeAllListeners();
+        client.end(true, () => {
+          console.log("Cliente MQTT desconectado y limpiado.");
+        });
+        client = null;
+      }
+
+      updateStatusBadge(connBadge, "disconnected", "DESCONECTADO");
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      btnPublish.disabled = true;
+      btnRegenId.disabled = false;
+      brokerUrlInput.disabled = false;
+      mqttUserInput.disabled = false;
+      mqttPassInput.disabled = false;
+
+      appendSafeLog(logBox, {
+        type: "info",
+        meta: `[DESCONEXIÓN MANUAL] ${formatTimestamp()}`,
+        text: "Cliente cerrado y recursos liberados satisfactoriamente."
+      });
+    }
+
+    function publicarMensaje() {
+      if (!client || !client.connected) {
+        const errBanner = document.getElementById("pubErrorBanner");
+        if (errBanner) {
+          errBanner.style.display = "block";
+          errBanner.textContent = "Error: Debes conectarte al broker antes de publicar.";
+        }
+        return;
+      }
+
+      const topic = document.getElementById("pubTopic").value.trim();
+      const rawPayload = jsonEditor.value.trim();
+      const qosVal = parseInt(qosSelect.value, 10);
+      const errBanner = document.getElementById("pubErrorBanner");
+
+      // Validación previa de JSON
+      const validation = validateJson(rawPayload);
+      if (!validation.valid) {
+        if (errBanner) {
+          errBanner.style.display = "block";
+          errBanner.textContent = `No se puede publicar: JSON inválido (${validation.error})`;
+        }
+        appendSafeLog(logBox, {
+          type: "error",
+          meta: `[RECHAZO LOCAL] ${formatTimestamp()}`,
+          text: `Intento de publicación abortado: error de sintaxis en JSON (${validation.error})`
+        });
+        return;
+      } else {
+        if (errBanner) errBanner.style.display = "none";
+      }
+
+      const pubOptions = {
+        qos: qosVal,
+        retain: false
+      };
+
+      const horaDespacho = formatTimestamp();
+
+      client.publish(topic, rawPayload, pubOptions, (err) => {
+        if (err) {
+          appendSafeLog(logBox, {
+            type: "error",
+            meta: `[ERROR PUBLICACIÓN] ${formatTimestamp()}`,
+            text: `Fallo al despachar mensaje en '${topic}': ${err.message}`
+          });
+        } else {
+          // Nota explícita: confirmación de despacho local al broker, no de recepción por suscriptores
+          appendSafeLog(logBox, {
+            type: "success",
+            meta: `[CONFIRMACIÓN LOCAL OK] ${horaDespacho} | Tópico: ${topic} | QoS: ${qosVal} | Retain: false`,
+            text: `Mensaje transmitido exitosamente al broker EMQX.\nPayload:\n${rawPayload}`
+          });
+        }
+      });
+    }
+
+    function limpiarLog() {
+      logBox.innerHTML = "";
+    }
+
+    // Inicialización al cargar la ventana
+    window.addEventListener("DOMContentLoaded", () => {
+      regenerarClientId();
+      cargarPayloadEjemplo();
+    });
+  </script>
+</body>
+</html>

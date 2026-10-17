@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suscriptor Web MQTT — Lab 07 Daniel</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/mqtt.min.js"></script>
+  <script src="shared.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">
+        <h1><span>📥</span> Suscriptor Web MQTT (mqtt.js)</h1>
+        <p>Laboratorio 07 — Apartado 4.1.4 | Integrante: Daniel</p>
+      </div>
+      <div class="nav-links">
+        <a href="publicador.html">Ir al Publicador</a>
+        <a href="suscriptor.html" style="border-color: var(--accent-blue);">Suscriptor</a>
+      </div>
+    </header>
+
+    <!-- 1. Configuración de Conexión -->
+    <section class="card">
+      <div class="card-title">
+        <span>Conexión al Broker EMQX (WebSocket)</span>
+        <span id="connBadge" class="badge badge-disconnected">DESCONECTADO</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="brokerUrl">URL WebSocket del Broker:</label>
+          <input type="text" id="brokerUrl" value="ws://localhost:8083/mqtt" placeholder="ws://localhost:8083/mqtt">
+        </div>
+
+        <div class="form-group">
+          <label for="clientId">Client ID (Único):</label>
+          <input type="text" id="clientId" readonly>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="mqttUser">Usuario MQTT (Authn):</label>
+          <input type="text" id="mqttUser" value="web_sub_daniel" placeholder="web_sub_daniel" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="mqttPass">Contraseña MQTT (Authn):</label>
+          <input type="password" id="mqttPass" placeholder="Ingresa contraseña de suscriptor" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="info-box">
+        Protocolo: <strong>MQTT v5.0</strong> (<code>protocolVersion: 5</code>) | Transporte: <strong>WebSockets (WS)</strong> | Path: <code>/mqtt</code> | Keepalive: 60s
+      </div>
+
+      <div class="btn-group">
+        <button id="btnConnect" class="btn btn-primary" onclick="iniciarConexion()">
+          <span>🔌</span> Conectar al Broker
+        </button>
+        <button id="btnDisconnect" class="btn btn-danger" onclick="desconectarBroker()" disabled>
+          <span>⏹️</span> Desconectar
+        </button>
+        <button id="btnSimDrop" class="btn btn-secondary" onclick="simularCorteWebSocket()" title="Simula interrupción abrupta de red/socket para prueba P07">
+          <span>⚡</span> Simular Corte WS (P07)
+        </button>
+        <button id="btnRegenId" class="btn btn-secondary" onclick="regenerarClientId()">
+          <span>🔄</span> Nuevo Client ID
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. Gestión de Suscripciones -->
+    <section class="card">
+      <div class="card-title">
+        <span>Control de Suscripciones</span>
+        <span id="subBadge" class="badge badge-disconnected">SIN SUSCRIPCIÓN ACTIVA</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="subTopic">Tópico de Suscripción:</label>
+          <input type="text" id="subTopic" value="cistern/lab07/prueba">
+        </div>
+
+        <div class="form-group">
+          <label for="qosSelect">Calidad de Servicio Solicitada (QoS):</label>
+          <select id="qosSelect">
+            <option value="0" selected>QoS 0 — At most once (Entrega sin acuse)</option>
+            <option value="1">QoS 1 — At least once (Entrega con confirmación)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Tópicos Preconfigurados Recomendados:</label>
+        <div class="btn-group">
+          <button class="btn btn-secondary" onclick="setPresetTopic('cistern/lab07/prueba')">
+            🎯 cistern/lab07/prueba (Aislado de Prueba)
+          </button>
+          <button class="btn btn-secondary" onclick="setPresetTopic('cistern/+/telemetry')">
+            💧 cistern/+/telemetry (Telemetría General Solo Lectura)
+          </button>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btnSubscribe" class="btn btn-success" onclick="suscribirTopico()" disabled>
+          <span>➕</span> Suscribir
+        </button>
+        <button id="btnUnsubscribe" class="btn btn-danger" onclick="cancelarSuscripcion()" disabled>
+          <span>➖</span> Cancelar Suscripción
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. Flujo de Mensajes Recibidos -->
+    <section class="card">
+      <div class="card-title">
+        <span>Mensajes Recibidos en Tiempo Real (<span id="msgCount">0</span>)</span>
+        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="limpiarMensajes()">
+          Limpiar Flujo
+        </button>
+      </div>
+      <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 10px;">
+        Visualización segura como texto (máximo 50 mensajes en búfer). Los payloads JSON se analizan y presentan con formato indentado cuando corresponda.
+      </p>
+      <div id="messagesContainer" class="log-container">
+        <!-- Los mensajes recibidos se insertan de forma segura aquí -->
+      </div>
+    </section>
+
+    <!-- 4. Registro de Eventos del Ciclo de Vida -->
+    <section class="card">
+      <div class="card-title">
+        <span>Bitácora del Ciclo de Vida (connect, reconnect, error, close, offline)</span>
+      </div>
+      <div id="lifecycleContainer" class="log-container" style="max-height: 180px;">
+        <!-- Entradas de eventos de ciclo de vida -->
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Variables de estado
+    let client = null;
+    let manualDisconnect = false;
+    let isConnecting = false;
+    let activeSubscriptions = new Set();
+    let totalMessagesReceived = 0;
+
+    const PREFIX = "web_sub_daniel";
+    const connBadge = document.getElementById("connBadge");
+    const subBadge = document.getElementById("subBadge");
+    const btnConnect = document.getElementById("btnConnect");
+    const btnDisconnect = document.getElementById("btnDisconnect");
+    const btnSubscribe = document.getElementById("btnSubscribe");
+    const btnUnsubscribe = document.getElementById("btnUnsubscribe");
+    const btnRegenId = document.getElementById("btnRegenId");
+    const brokerUrlInput = document.getElementById("brokerUrl");
+    const clientIdInput = document.getElementById("clientId");
+    const subTopicInput = document.getElementById("subTopic");
+    const qosSelect = document.getElementById("qosSelect");
+    const messagesContainer = document.getElementById("messagesContainer");
+    const lifecycleContainer = document.getElementById("lifecycleContainer");
+    const msgCountEl = document.getElementById("msgCount");
+
+    function regenerarClientId() {
+      if (client && client.connected) {
+        alert("Desconéctate antes de cambiar el Client ID.");
+        return;
+      }
+      clientIdInput.value = generateClientId(PREFIX);
+    }
+
+    function setPresetTopic(topic) {
+      subTopicInput.value = topic;
+    }
+
+    const mqttUserInput = document.getElementById("mqttUser");
+    const mqttPassInput = document.getElementById("mqttPass");
+
+    function iniciarConexion() {
+      if (client && (client.connected || isConnecting)) {
+        console.warn("Conexión ya iniciada o en progreso.");
+        return;
+      }
+
+      const brokerUrl = brokerUrlInput.value.trim();
+      const clientId = clientIdInput.value.trim();
+      const username = mqttUserInput.value.trim();
+      const password = mqttPassInput.value;
+
+      if (!brokerUrl) {
+        alert("Por favor ingresa la URL WebSocket del broker.");
+        return;
+      }
+
+      manualDisconnect = false;
+      isConnecting = true;
+
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+      btnSimDrop.disabled = false;
+      btnRegenId.disabled = true;
+      brokerUrlInput.disabled = true;
+      mqttUserInput.disabled = true;
+      mqttPassInput.disabled = true;
+
+      updateStatusBadge(connBadge, "reconnecting", "CONECTANDO...");
+      appendSafeLog(lifecycleContainer, {
+        type: "info",
+        meta: `[INTENTO DE CONEXIÓN] ${formatTimestamp()}`,
+        text: `Iniciando sesión suscriptor MQTT v5 en ${brokerUrl} con Client ID: ${clientId} y Usuario: ${username || "(anónimo)"}`
+      });
+
+      const options = {
+        clientId: clientId,
+        protocolVersion: 5, // MQTT 5.0
+        clean: true,
+        keepalive: 60,
+        reconnectPeriod: 3000,
+        connectTimeout: 8000,
+        resubscribe: false // Control manual de re-suscripción para evitar duplicación
+      };
+
+      if (username) {
+        options.username = username;
+      }
+      if (password) {
+        options.password = password;
+      }
+
+      try {
+        client = mqtt.connect(brokerUrl, options);
+
+        // Evento: connect
+        client.on("connect", (connack) => {
+          isConnecting = false;
+          updateStatusBadge(connBadge, "connected", "CONECTADO");
+          btnSubscribe.disabled = false;
+          btnUnsubscribe.disabled = activeSubscriptions.size === 0;
+
+          appendSafeLog(lifecycleContainer, {
+            type: "success",
+            meta: `[EVENTO: connect] ${formatTimestamp()}`,
+            text: `Sesión establecida con el broker EMQX. (SessionPresent: ${connack ? connack.sessionPresent : false})`
+          });
+
+          // Restauración ordenada de suscripciones en caso de reconexión
+          if (activeSubscriptions.size > 0) {
+            appendSafeLog(lifecycleContainer, {
+              type: "info",
+              meta: `[RESTAURACIÓN] ${formatTimestamp()}`,
+              text: `Restaurando ${activeSubscriptions.size} suscripción(es) previa(s)...`
+            });
+            activeSubscriptions.forEach((t) => {
+              ejecutarSuscripcion(t, parseInt(qosSelect.value, 10));
+            });
+          }
+        });
+
+        // Evento: reconnect
+        client.on("reconnect", () => {
+          if (manualDisconnect) return;
+          updateStatusBadge(connBadge, "reconnecting", "RECONECTANDO...");
+          appendSafeLog(lifecycleContainer, {
+            type: "warn",
+            meta: `[EVENTO: reconnect] ${formatTimestamp()}`,
+            text: "Reintentando reconexión automática de transporte WebSocket..."
+          });
+        });
+
+        // Evento: error
+        client.on("error", (err) => {
+          isConnecting = false;
+          const msg = (err.message || "").toLowerCase();
+          const isAuthFailure = msg.includes("not authorized") || msg.includes("bad user") || msg.includes("connack") || err.code === 4 || err.code === 5 || err.code === 134 || err.code === 135;
+
+          if (isAuthFailure) {
+            updateStatusBadge(connBadge, "error", "RECHAZO DE CREDENCIALES");
+            appendSafeLog(lifecycleContainer, {
+              type: "error",
+              meta: `[ERROR AUTENTICACIÓN PERMANENTE] ${formatTimestamp()}`,
+              text: `Rechazo definitivo de credenciales por el broker: ${err.message || err}. Reconexión cancelada.`
+            });
+            client.end(true);
+            btnConnect.disabled = false;
+            btnDisconnect.disabled = true;
+            btnSimDrop.disabled = true;
+            btnSubscribe.disabled = true;
+            btnUnsubscribe.disabled = true;
+            btnRegenId.disabled = false;
+            brokerUrlInput.disabled = false;
+            mqttUserInput.disabled = false;
+            mqttPassInput.disabled = false;
+          } else {
+            updateStatusBadge(connBadge, "error", "ERROR");
+            appendSafeLog(lifecycleContainer, {
+              type: "error",
+              meta: `[EVENTO: error] ${formatTimestamp()}`,
+              text: `Error reportado por cliente MQTT: ${err.message || err}`
+            });
+          }
+        });
+
+        // Evento: close
+        client.on("close", () => {
+          isConnecting = false;
+          btnSubscribe.disabled = true;
+          btnUnsubscribe.disabled = true;
+
+          if (manualDisconnect) {
+            updateStatusBadge(connBadge, "disconnected", "DESCONECTADO");
+            appendSafeLog(lifecycleContainer, {
+              type: "info",
+              meta: `[EVENTO: close] ${formatTimestamp()}`,
+              text: "Conexión cerrada por el usuario. Ciclo de vida detenido."
+            });
+          } else {
+            updateStatusBadge(connBadge, "reconnecting", "CERRADO / REINTENTANDO");
+            appendSafeLog(lifecycleContainer, {
+              type: "warn",
+              meta: `[EVENTO: close] ${formatTimestamp()}`,
+              text: "Conexión WebSocket cerrada por el broker o red. Reintentando..."
+            });
+          }
+        });
+
+        // Evento: offline
+        client.on("offline", () => {
+          btnSubscribe.disabled = true;
+          btnUnsubscribe.disabled = true;
+          updateStatusBadge(connBadge, "reconnecting", "OFFLINE");
+          appendSafeLog(lifecycleContainer, {
+            type: "warn",
+            meta: `[EVENTO: offline] ${formatTimestamp()}`,
+            text: "El cliente suscriptor ha perdido la conectividad y se encuentra offline."
+          });
+        });
+
+        // Evento: packetreceive (observabilidad MQTT)
+        client.on("packetreceive", (packet) => {
+          if (!packet) return;
+
+          if (packet.cmd === "connack") {
+            const reasonCode = packet.reasonCode !== undefined ? packet.reasonCode : packet.returnCode;
+            if (reasonCode && reasonCode >= 128) {
+              appendSafeLog(lifecycleContainer, {
+                type: "error",
+                meta: `[MQTT CONNACK: RECHAZO] ${formatTimestamp()} | ReasonCode: ${reasonCode} (0x${reasonCode.toString(16)})`,
+                text: `Conexión rechazada por EMQX 5.8: código ${reasonCode} (${reasonCode === 134 ? 'Bad username or password' : (reasonCode === 135 ? 'Not authorized' : 'Connection refused')}). Cancelando reconexión.`
+              });
+              updateStatusBadge(connBadge, "error", "ACCESO DENEGADO");
+              client.end(true);
+              isConnecting = false;
+              btnConnect.disabled = false;
+              btnDisconnect.disabled = true;
+              btnSimDrop.disabled = true;
+              btnSubscribe.disabled = true;
+              btnUnsubscribe.disabled = true;
+              btnRegenId.disabled = false;
+              brokerUrlInput.disabled = false;
+              mqttUserInput.disabled = false;
+              mqttPassInput.disabled = false;
+            }
+          } else if (packet.cmd === "suback") {
+            const hasDenied = Array.isArray(packet.granted) && packet.granted.some(g => g >= 128);
+            if (hasDenied) {
+              appendSafeLog(lifecycleContainer, {
+                type: "error",
+                meta: `[MQTT PACKET: SUBACK RECHAZADO] ${formatTimestamp()} | MessageId: ${packet.messageId}`,
+                text: `Suscripción DENEGADA por lista de control de acceso (ACL / Authz) de EMQX 5.8. Códigos: ${JSON.stringify(packet.granted)}`
+              });
+            } else {
+              appendSafeLog(lifecycleContainer, {
+                type: "info",
+                meta: `[MQTT PACKET: SUBACK OK] ${formatTimestamp()} | MessageId: ${packet.messageId}`,
+                text: `Paquete SUBACK recibido de EMQX con códigos concedidos: ${JSON.stringify(packet.granted)}`
+              });
+            }
+          } else if (packet.cmd === "unsuback") {
+            appendSafeLog(lifecycleContainer, {
+              type: "info",
+              meta: `[MQTT PACKET: UNSUBACK] ${formatTimestamp()} | MessageId: ${packet.messageId}`,
+              text: `Paquete UNSUBACK recibido de EMQX confirmando revocación (MessageId: ${packet.messageId}).`
+            });
+          }
+        });
+
+        // Evento: message
+        client.on("message", (topic, payloadBuffer, packet) => {
+          totalMessagesReceived++;
+          msgCountEl.textContent = totalMessagesReceived;
+
+          const rawText = payloadBuffer.toString("utf-8");
+          const horaRecepcion = formatTimestamp();
+          const qosRecibido = packet && packet.qos !== undefined ? packet.qos : "N/A";
+          const retainFlag = packet && packet.retain ? "true" : "false";
+
+          let displayText = rawText;
+          let jsonCheck = validateJson(rawText);
+          if (jsonCheck.valid) {
+            displayText = JSON.stringify(jsonCheck.parsed, null, 2);
+          }
+
+          // Inserción segura como texto (sin innerHTML para mitigar inyecciones)
+          appendSafeLog(messagesContainer, {
+            type: "success",
+            meta: `[MENSAJE RECIBIDO] ${horaRecepcion} | Tópico: ${topic} | QoS: ${qosRecibido} | Retain: ${retainFlag}`,
+            text: displayText
+          }, 50);
+        });
+
+      } catch (ex) {
+        isConnecting = false;
+        desconectarBroker();
+        alert(`Error al inicializar cliente suscriptor: ${ex.message}`);
+      }
+    }
+
+    function desconectarBroker() {
+      manualDisconnect = true;
+      isConnecting = false;
+
+      if (client) {
+        client.removeAllListeners();
+        client.end(true, () => {
+          console.log("Cliente suscriptor desconectado.");
+        });
+        client = null;
+      }
+
+      activeSubscriptions.clear();
+      actualizarBadgeSuscripcion();
+
+      updateStatusBadge(connBadge, "disconnected", "DESCONECTADO");
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      btnSimDrop.disabled = true;
+      btnSubscribe.disabled = true;
+      btnUnsubscribe.disabled = true;
+      btnRegenId.disabled = false;
+      brokerUrlInput.disabled = false;
+      mqttUserInput.disabled = false;
+      mqttPassInput.disabled = false;
+
+      appendSafeLog(lifecycleContainer, {
+        type: "info",
+        meta: `[DESCONEXIÓN MANUAL] ${formatTimestamp()}`,
+        text: "Sesión cerrada voluntariamente y recursos liberados."
+      });
+    }
+
+    function suscribirTopico() {
+      if (!client || !client.connected) {
+        alert("Debes conectarte al broker antes de suscribirte.");
+        return;
+      }
+
+      const topic = subTopicInput.value.trim();
+      const qos = parseInt(qosSelect.value, 10);
+
+      if (!topic) {
+        alert("Ingresa un tópico válido.");
+        return;
+      }
+
+      ejecutarSuscripcion(topic, qos);
+    }
+
+    function ejecutarSuscripcion(topic, qos) {
+      // No indicar éxito anticipadamente: solo en el callback del broker
+      client.subscribe(topic, { qos }, (err, granted) => {
+        if (err) {
+          appendSafeLog(lifecycleContainer, {
+            type: "error",
+            meta: `[ERROR SUSCRIPCIÓN] ${formatTimestamp()}`,
+            text: `Fallo al suscribir al tópico '${topic}': ${err.message}`
+          });
+          actualizarBadgeSuscripcion();
+        } else {
+          const grantedQos = granted && granted.length > 0 ? granted[0].qos : qos;
+          activeSubscriptions.add(topic);
+          actualizarBadgeSuscripcion();
+          btnUnsubscribe.disabled = false;
+
+          appendSafeLog(lifecycleContainer, {
+            type: "success",
+            meta: `[SUSCRIPCIÓN CONCEDIDA] ${formatTimestamp()}`,
+            text: `Broker confirmó suscripción en '${topic}' con QoS concedido: ${grantedQos}`
+          });
+        }
+      });
+    }
+
+    function cancelarSuscripcion() {
+      if (!client || !client.connected) return;
+
+      const topic = subTopicInput.value.trim();
+      if (!topic) return;
+
+      client.unsubscribe(topic, (err) => {
+        if (err) {
+          appendSafeLog(lifecycleContainer, {
+            type: "error",
+            meta: `[ERROR CANCELACIÓN] ${formatTimestamp()}`,
+            text: `No se pudo cancelar suscripción en '${topic}': ${err.message}`
+          });
+        } else {
+          activeSubscriptions.delete(topic);
+          actualizarBadgeSuscripcion();
+          if (activeSubscriptions.size === 0) {
+            btnUnsubscribe.disabled = true;
+          }
+
+          appendSafeLog(lifecycleContainer, {
+            type: "info",
+            meta: `[SUSCRIPCIÓN CANCELADA] ${formatTimestamp()}`,
+            text: `Suscripción al tópico '${topic}' revocada exitosamente.`
+          });
+        }
+      });
+    }
+
+    function actualizarBadgeSuscripcion() {
+      if (activeSubscriptions.size === 0) {
+        updateStatusBadge(subBadge, "disconnected", "SIN SUSCRIPCIÓN ACTIVA");
+      } else {
+        const lista = Array.from(activeSubscriptions).join(", ");
+        updateStatusBadge(subBadge, "subscribed", `ACTIVA (${lista})`);
+      }
+    }
+
+    function limpiarMensajes() {
+      messagesContainer.innerHTML = "";
+      totalMessagesReceived = 0;
+      msgCountEl.textContent = "0";
+    }
+
+    function simularCorteWebSocket() {
+      if (client && client.stream) {
+        appendSafeLog(lifecycleContainer, {
+          type: "warn",
+          meta: `[SIMULACIÓN P07] ${formatTimestamp()}`,
+          text: "Simulando interrupción abrupta de enlace WebSocket mediante client.stream.destroy()..."
+        });
+        client.stream.destroy(new Error("Corte simulado de transporte WebSocket"));
+      } else {
+        appendSafeLog(lifecycleContainer, {
+          type: "warn",
+          meta: `[SIMULACIÓN P07] ${formatTimestamp()}`,
+          text: "No se puede simular corte: cliente desconectado."
+        });
+      }
+    }
+
+    // Inicialización al cargar la ventana
+    window.addEventListener("DOMContentLoaded", () => {
+      regenerarClientId();
+    });
+  </script>
+</body>
+</html>
