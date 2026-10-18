@@ -13,34 +13,60 @@ import json
 import threading
 import paho.mqtt.client as mqtt
 
-# Cargar variables de entorno desde /app/.env si existe, o del entorno
-env_path = "/app/.env"
-if not os.path.exists(env_path):
-    env_path = ".env"
+# -----------------------------------------------------------------------------
+# CARGA DE CONFIGURACION CON PRECEDENCIA ESTRICTA
+# Precedencia:
+#   1) Variables de entorno del sistema (os.environ)
+#   2) Archivo indicado explicitamente en ENV_FILE o argumento --env-file
+#   3) Fallback a .env local si existe
+# -----------------------------------------------------------------------------
+env_file_vars = {}
+env_candidates = []
 
-env_vars = {}
-if os.path.exists(env_path):
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                env_vars[k.strip()] = v.strip()
+# Revisar si se pasa --env-file en sys.argv
+for i, arg in enumerate(sys.argv):
+    if arg == "--env-file" and i + 1 < len(sys.argv):
+        env_candidates.append(sys.argv[i + 1])
+    elif arg.startswith("--env-file="):
+        env_candidates.append(arg.split("=", 1)[1])
 
-BROKER_HOST = os.getenv("BROKER_HOST", env_vars.get("BROKER_HOST", "emqx_broker"))
-BROKER_TCP_PORT = int(os.getenv("BROKER_PORT", env_vars.get("BROKER_PORT", 1883)))
+if os.getenv("ENV_FILE"):
+    env_candidates.append(os.getenv("ENV_FILE"))
+env_candidates.extend([".env", "/app/.env"])
 
-USER_PUB = env_vars.get("MQTT_USER_PUB", "web_pub_daniel")
-PASS_PUB = env_vars.get("MQTT_PASS_PUB", "")
+for candidate in env_candidates:
+    if os.path.exists(candidate) and os.path.isfile(candidate):
+        try:
+            with open(candidate, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        env_file_vars[k.strip()] = v.strip()
+            break
+        except Exception:
+            pass
 
-USER_SUB = env_vars.get("MQTT_USER_SUB", "web_sub_daniel")
-PASS_SUB = env_vars.get("MQTT_PASS_SUB", "")
+def get_config(key, default=""):
+    val = os.getenv(key)
+    if val is not None and val != "":
+        return val
+    return env_file_vars.get(key, default)
 
-USER_NODES = env_vars.get("MQTT_USER_NODES", "esp32_nodes")
-PASS_NODES = env_vars.get("MQTT_PASS_NODES", "")
+BROKER_HOST = get_config("BROKER_HOST", "emqx_broker")
+BROKER_TCP_PORT = int(get_config("BROKER_PORT", "1883"))
 
-USER_BACKEND = env_vars.get("MQTT_USER_BACKEND", "backend_rules")
-PASS_BACKEND = env_vars.get("MQTT_PASS_BACKEND", "")
+USER_PUB = get_config("MQTT_USER_PUB", "web_pub_daniel")
+PASS_PUB = get_config("MQTT_PASS_PUB", "")
+
+USER_SUB = get_config("MQTT_USER_SUB", "web_sub_daniel")
+PASS_SUB = get_config("MQTT_PASS_SUB", "")
+
+USER_NODES = get_config("MQTT_USER_NODES", "esp32_nodes")
+PASS_NODES = get_config("MQTT_PASS_NODES", "")
+
+USER_BACKEND = get_config("MQTT_USER_BACKEND", "backend_rules")
+PASS_BACKEND = get_config("MQTT_PASS_BACKEND", "")
 
 TEST_TOPIC = "cistern/lab07/prueba"
 ISOLATED_DENIED_TOPIC = "cistern/lab08/aislado_denegado"

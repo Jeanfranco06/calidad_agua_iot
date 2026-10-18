@@ -3,7 +3,8 @@
 # MODULO: Laboratorio 08 (Apartado Daniel)
 # ARCHIVO: provision_auth_db.ps1
 # DESCRIPCION: Aprovisionamiento automatizado e idempotente de Authn y Authz MySQL
-#              con gestion local de secretos, rotacion explicita y auditoria de privilegios.
+#              con gestion local de secretos, preservacion estricta de .env,
+#              rotacion explicita y auditoria de privilegios minimos.
 # =============================================================================
 
 param (
@@ -12,21 +13,29 @@ param (
     [string]$RootUser = "root",
     [string]$RootPass = "rootpass",
     [string]$RoUser = "emqx_ro_user",
-    [switch]$RotateCredentials
+    [string]$EnvFile = "",
+    [switch]$RotateCredentials,
+    [switch]$SkipDbApply
 )
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
-$EnvPath = Join-Path $RepoRoot ".env"
+
+if ($EnvFile -and $EnvFile.Trim() -ne "") {
+    $EnvPath = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $EnvFile)) }
+} else {
+    $EnvPath = Join-Path $RepoRoot ".env"
+}
 
 Write-Host "=== APROVISIONAMIENTO Y GESTION DE SEGURIDAD MYSQL PARA EMQX 5.8 ===" -ForegroundColor Cyan
 Write-Host "Contenedor destino : $ContainerName" -ForegroundColor Gray
 Write-Host "Base de datos      : $DatabaseName" -ForegroundColor Gray
+Write-Host "Archivo .env       : $EnvPath" -ForegroundColor Gray
 Write-Host "Modo de rotacion   : $(if ($RotateCredentials) {'ROTACION ACTIVA'} else {'IDEMPOTENTE (PRESERVACION)'})" -ForegroundColor Gray
 
 # -----------------------------------------------------------------------------
-# Funcion auxiliar para generar cadenas criptograficamente robustas
+# Funciones auxiliares criptograficas
 # -----------------------------------------------------------------------------
 function New-SecureSecret([int]$Length = 24) {
     $bytes = New-Object byte[] $Length
@@ -44,82 +53,185 @@ function Compute-Sha256SaltSuffix([string]$password, [string]$salt) {
 }
 
 # -----------------------------------------------------------------------------
-# Carga o inicializacion de secretos locales fuera de Git (.env)
+# Preservacion estricta y actualizacion segura de .env
 # -----------------------------------------------------------------------------
-$envMap = @{}
-if (Test-Path $EnvPath) {
-    Get-Content $EnvPath | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
-            $parts = $line.Split("=", 2)
-            $envMap[$parts[0].Trim()] = $parts[1].Trim()
+function Update-EnvFileSafely {
+    param (
+        [string]$FilePath,
+        [switch]$Rotate
+    )
+
+    $secretKeys = @(
+        "EMQX_RO_DB_PASS",
+        "MQTT_PASS_PUB",
+        "MQTT_PASS_SUB",
+        "MQTT_PASS_NODES",
+        "MQTT_PASS_BACKEND"
+    )
+
+    $defaultConfig = [ordered]@{
+        "DB_HOST" = "mysql_server"
+        "DB_PORT" = "3306"
+        "DB_NAME" = $DatabaseName
+        "EMQX_RO_DB_USER" = $RoUser
+        "MQTT_USER_PUB" = "web_pub_daniel"
+        "MQTT_USER_SUB" = "web_sub_daniel"
+        "MQTT_USER_NODES" = "esp32_nodes"
+        "MQTT_USER_BACKEND" = "backend_rules"
+    }
+
+    $rawLines = @()
+    $existingMap = @{}
+    $seenKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    if (Test-Path $FilePath) {
+        $rawLines = Get-Content $FilePath
+        foreach ($line in $rawLines) {
+            $trimmed = $line.Trim()
+            if ($trimmed -and -not $trimmed.StartsWith("#") -and $trimmed.Contains("=")) {
+                $p = $trimmed.Split("=", 2)
+                $k = $p[0].Trim()
+                $v = $p[1].Trim()
+                $existingMap[$k] = $v
+                $seenKeys.Add($k) | Out-Null
+            }
         }
     }
+
+    $newMap = @{}
+    $modified = $false
+
+    # 1. Procesar secretos gestionados
+    foreach ($k in $secretKeys) {
+        $currVal = if ($existingMap.ContainsKey($k)) { $existingMap[$k] } else { $null }
+        $isPlaceholder = ($currVal -and ($currVal.StartsWith("CAMBIAR_POR_") -or $currVal.Contains("CAMBIAR_POR_")))
+        $isEmpty = [string]::IsNullOrWhiteSpace($currVal)
+        $isMissing = -not $existingMap.ContainsKey($k)
+
+        if ($Rotate -or $isMissing -or $isEmpty -or $isPlaceholder) {
+            $len = if ($k -eq "EMQX_RO_DB_PASS") { 26 } else { 24 }
+            $newMap[$k] = New-SecureSecret $len
+            $modified = $true
+            if ($isPlaceholder) {
+                Write-Host "  [SEGURIDAD] Marcador de plantilla detectado en $k. Sustituido por credencial segura." -ForegroundColor Yellow
+            }
+        } else {
+            $newMap[$k] = $currVal
+        }
+    }
+
+    # 2. Procesar configuraciones no sensibles
+    foreach ($k in $defaultConfig.Keys) {
+        $currVal = if ($existingMap.ContainsKey($k)) { $existingMap[$k] } else { $null }
+        $isEmpty = [string]::IsNullOrWhiteSpace($currVal)
+        $isMissing = -not $existingMap.ContainsKey($k)
+
+        if ($isMissing -or $isEmpty) {
+            $newMap[$k] = $defaultConfig[$k]
+            $modified = $true
+        } else {
+            $newMap[$k] = $currVal
+        }
+    }
+
+    # 3. Ensamblar contenido preservando variables ajenas y comentarios
+    $finalLines = @()
+    if (Test-Path $FilePath) {
+        $allManagedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($k in $secretKeys) { $allManagedKeys.Add($k) | Out-Null }
+        foreach ($k in $defaultConfig.Keys) { $allManagedKeys.Add($k) | Out-Null }
+
+        $writtenKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($line in $rawLines) {
+            $trimmed = $line.Trim()
+            if ($trimmed -and -not $trimmed.StartsWith("#") -and $trimmed.Contains("=")) {
+                $p = $trimmed.Split("=", 2)
+                $k = $p[0].Trim()
+                if ($allManagedKeys.Contains($k)) {
+                    $finalLines += "$k=$($newMap[$k])"
+                    $writtenKeys.Add($k) | Out-Null
+                } else {
+                    # Variable ajena al modulo: se conserva exactamente intacta
+                    $finalLines += $line
+                }
+            } else {
+                # Linea de comentario o espacio en blanco: se conserva
+                $finalLines += $line
+            }
+        }
+
+        # Anadir al final cualquier variable gestionada faltante que no existia en el archivo
+        $missingToAdd = @()
+        foreach ($k in $allManagedKeys) {
+            if (-not $writtenKeys.Contains($k)) {
+                $missingToAdd += "$k=$($newMap[$k])"
+            }
+        }
+        if ($missingToAdd.Count -gt 0) {
+            $finalLines += ""
+            $finalLines += "# Variables de calidad_agua_iot agregadas automaticamente"
+            $finalLines += $missingToAdd
+        }
+    } else {
+        $finalLines += "# ============================================================================="
+        $finalLines += "# VARIABLES DE ENTORNO LOCALES (SECRETO - NO VERSIONAR)"
+        $finalLines += "# Generado de forma automatizada por provision_auth_db.ps1"
+        $finalLines += "# ============================================================================="
+        $finalLines += "DB_HOST=$($newMap['DB_HOST'])"
+        $finalLines += "DB_PORT=$($newMap['DB_PORT'])"
+        $finalLines += "DB_NAME=$($newMap['DB_NAME'])"
+        $finalLines += ""
+        $finalLines += "# Credencial de consulta EMQX"
+        $finalLines += "EMQX_RO_DB_USER=$($newMap['EMQX_RO_DB_USER'])"
+        $finalLines += "EMQX_RO_DB_PASS=$($newMap['EMQX_RO_DB_PASS'])"
+        $finalLines += ""
+        $finalLines += "# Credenciales MQTT para Identidades de Servicio y Clientes"
+        $finalLines += "MQTT_USER_PUB=$($newMap['MQTT_USER_PUB'])"
+        $finalLines += "MQTT_PASS_PUB=$($newMap['MQTT_PASS_PUB'])"
+        $finalLines += ""
+        $finalLines += "MQTT_USER_SUB=$($newMap['MQTT_USER_SUB'])"
+        $finalLines += "MQTT_PASS_SUB=$($newMap['MQTT_PASS_SUB'])"
+        $finalLines += ""
+        $finalLines += "MQTT_USER_NODES=$($newMap['MQTT_USER_NODES'])"
+        $finalLines += "MQTT_PASS_NODES=$($newMap['MQTT_PASS_NODES'])"
+        $finalLines += ""
+        $finalLines += "MQTT_USER_BACKEND=$($newMap['MQTT_USER_BACKEND'])"
+        $finalLines += "MQTT_PASS_BACKEND=$($newMap['MQTT_PASS_BACKEND'])"
+        $modified = $true
+    }
+
+    # 4. Escritura atomica y segura
+    if ($modified -or -not (Test-Path $FilePath)) {
+        $parentDir = Split-Path -Parent $FilePath
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        $tmpGuid = [System.Guid]::NewGuid().ToString("N").Substring(0, 8)
+        $tmpFile = "$FilePath.tmp.$tmpGuid"
+        Set-Content -Path $tmpFile -Value $finalLines -Encoding UTF8
+        if (Test-Path $tmpFile) {
+            Move-Item -Path $tmpFile -Destination $FilePath -Force
+            Write-Host "[SEGURIDAD] Archivo .env preservado y actualizado de forma atomica en: $FilePath" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[INFO] Variables y credenciales existentes verificadas sin cambios requeridos." -ForegroundColor Gray
+    }
+
+    $retMap = @{}
+    foreach ($k in $newMap.Keys) { $retMap[$k] = $newMap[$k] }
+    foreach ($k in $existingMap.Keys) {
+        if (-not $retMap.ContainsKey($k)) { $retMap[$k] = $existingMap[$k] }
+    }
+    return $retMap
 }
 
-$needEnvWrite = $false
+# Carga y preservacion de .env
+$envMap = Update-EnvFileSafely -FilePath $EnvPath -Rotate:$RotateCredentials
 
-# Generar o actualizar contrasenas en caso de rotacion o ausencia
-if ($RotateCredentials -or -not $envMap.ContainsKey("EMQX_RO_DB_PASS")) {
-    $envMap["EMQX_RO_DB_PASS"] = New-SecureSecret 26
-    $needEnvWrite = $true
-}
-if ($RotateCredentials -or -not $envMap.ContainsKey("MQTT_PASS_PUB")) {
-    $envMap["MQTT_PASS_PUB"] = New-SecureSecret 24
-    $needEnvWrite = $true
-}
-if ($RotateCredentials -or -not $envMap.ContainsKey("MQTT_PASS_SUB")) {
-    $envMap["MQTT_PASS_SUB"] = New-SecureSecret 24
-    $needEnvWrite = $true
-}
-if ($RotateCredentials -or -not $envMap.ContainsKey("MQTT_PASS_NODES")) {
-    $envMap["MQTT_PASS_NODES"] = New-SecureSecret 24
-    $needEnvWrite = $true
-}
-if ($RotateCredentials -or -not $envMap.ContainsKey("MQTT_PASS_BACKEND")) {
-    $envMap["MQTT_PASS_BACKEND"] = New-SecureSecret 24
-    $needEnvWrite = $true
-}
-
-# Configuracion complementaria
-$envMap["DB_HOST"] = "mysql_server"
-$envMap["DB_PORT"] = "3306"
-$envMap["DB_NAME"] = $DatabaseName
-$envMap["EMQX_RO_DB_USER"] = $RoUser
-$envMap["MQTT_USER_PUB"] = "web_pub_daniel"
-$envMap["MQTT_USER_SUB"] = "web_sub_daniel"
-$envMap["MQTT_USER_NODES"] = "esp32_nodes"
-$envMap["MQTT_USER_BACKEND"] = "backend_rules"
-
-if ($needEnvWrite) {
-    $envContent = @"
-# =============================================================================
-# VARIABLES DE ENTORNO LOCALES (SECRETO - NO VERSIONAR)
-# Generado de forma automatizada por provision_auth_db.ps1
-# =============================================================================
-DB_HOST=$($envMap['DB_HOST'])
-DB_PORT=$($envMap['DB_PORT'])
-DB_NAME=$($envMap['DB_NAME'])
-
-# Credencial de consulta EMQX (Rotacion aplicada)
-EMQX_RO_DB_USER=$($envMap['EMQX_RO_DB_USER'])
-EMQX_RO_DB_PASS=$($envMap['EMQX_RO_DB_PASS'])
-
-# Credenciales MQTT para Identidades de Servicio y Clientes
-MQTT_USER_PUB=$($envMap['MQTT_USER_PUB'])
-MQTT_PASS_PUB=$($envMap['MQTT_PASS_PUB'])
-
-MQTT_USER_SUB=$($envMap['MQTT_USER_SUB'])
-MQTT_PASS_SUB=$($envMap['MQTT_PASS_SUB'])
-
-MQTT_USER_NODES=$($envMap['MQTT_USER_NODES'])
-MQTT_PASS_NODES=$($envMap['MQTT_PASS_NODES'])
-
-MQTT_USER_BACKEND=$($envMap['MQTT_USER_BACKEND'])
-MQTT_PASS_BACKEND=$($envMap['MQTT_PASS_BACKEND'])
-"@
-    Set-Content -Path $EnvPath -Value $envContent -Encoding UTF8
-    Write-Host "[SEGURIDAD] Archivo de secretos locales actualizado en: $EnvPath" -ForegroundColor Green
+if ($SkipDbApply) {
+    Write-Host "[INFO] Modo SkipDbApply activo. Omitiendo aplicacion en MySQL." -ForegroundColor Gray
+    exit 0
 }
 
 $RoPass = $envMap["EMQX_RO_DB_PASS"]
@@ -149,7 +261,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Reglas ACL e identidades base sincronizadas." -ForegroundColor Green
 
 # -----------------------------------------------------------------------------
-# 3. Rotacion o Sincronizacion de Contrasenas y Hashes de Usuarios MQTT
+# 3. Sincronizacion de Contrasenas y Hashes de Usuarios MQTT
 # -----------------------------------------------------------------------------
 Write-Host "`n[3/4] Sincronizando credenciales de usuarios MQTT y cuenta de consulta..." -ForegroundColor Yellow
 
@@ -171,7 +283,7 @@ foreach ($u in $usersToSync) {
 }
 Write-Host "Hashes SHA-256 (con salt suffix) coherentes para las 4 identidades." -ForegroundColor Green
 
-# Configurar o rotar cuenta de consulta de solo lectura para EMQX
+# Configurar o actualizar cuenta de consulta de solo lectura para EMQX
 $sqlRo = @"
 CREATE USER IF NOT EXISTS '$RoUser'@'%' IDENTIFIED BY '$RoPass';
 ALTER USER '$RoUser'@'%' IDENTIFIED BY '$RoPass';

@@ -12,3 +12,13 @@ secrets/
 
 # Dependencias locales
 node_modules/
+
+# Cache de Python y compilados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales de pruebas y entorno
+*.tmp*
+.tmp*
+.test_env*

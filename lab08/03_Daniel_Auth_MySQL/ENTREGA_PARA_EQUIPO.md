@@ -1,238 +1,237 @@
-# GUÍA DE ENTREGA Y OPERACIÓN PARA EL EQUIPO TÉCNICO
-## Integración de Autenticación/Autorización MQTT (Lab 08) y Clientes Web (Lab 07)
+# GUIA DE ENTREGA Y OPERACION PARA EL EQUIPO TECNICO
+## Integracion de Autenticacion/Autorizacion MQTT (Lab 08) y Clientes Web (Lab 07)
 
-**Proyecto:** *Monitoreo y predicción de turbidez en tanques de almacenamiento de agua mediante una arquitectura IoT y modelos de regresión*  
+**Proyecto:** *Monitoreo y prediccion de turbidez en tanques de almacenamiento de agua mediante una arquitectura IoT y modelos de regresion*  
 **Curso:** Internet de las Cosas — Universidad Nacional de Trujillo  
-**Módulo:** Seguridad Perimetral MQTT y Clientes Web de Telemetría  
+**Modulo:** Seguridad Perimetral MQTT y Clientes Web de Telemetria  
 **Responsable:** Daniel  
-**Destinatarios:** Alexis (Frontend/Dashboard), Mario (QA/Validación), Jeanfranco (Infraestructura/Persistencia)  
+**Destinatarios:** Alexis (Frontend/Dashboard), Mario (QA/Validacion), Jeanfranco (Infraestructura/Persistencia)  
 **Rama de Entrega:** `feat/daniel-lab07-lab08`  
-**Fecha:** 17 de Octubre de 2026  
+**Fecha:** 18 de Octubre de 2026  
 
 ---
 
 > [!IMPORTANT]
 > **ALCANCE Y ENTORNO DE PRUEBAS:**  
-> Esta guía documenta el procedimiento probado y verificado en la estación de trabajo de Daniel sobre Windows 11 con Docker Desktop y PowerShell. Diferencia explícitamente el estado ya verificado localmente respecto a una instalación desde cero en las computadoras de otros integrantes. **No asuma que este procedimiento se ejecutó en una máquina virgen de prueba.**
+> Esta guia documenta el procedimiento probado y verificado en la estacion de trabajo de Daniel sobre Windows 11 con Docker Desktop, PowerShell 5.1 / 7 y Node.js. Diferencia explicitamente el estado verificado localmente respecto a una instalacion desde cero en las computadoras de otros integrantes. **No se afirma haber probado una instalacion limpia en una maquina virgen independiente; el equipo debe seguir este procedimiento para reproducir el despliegue.**
 
 ---
 
-## 1. ¡ADVERTENCIA CRÍTICA: CLIENTES ANÓNIMOS DESHABILITADOS!
+## 1. ¡ADVERTENCIA CRITICA: CLIENTES ANONIMOS DESHABILITADOS!
 
-A partir de la integración del Laboratorio 08:
-1. **EMQX rechaza categóricamente cualquier intento de conexión anónima** (sin `username` o con contraseña vacía/inválida), retornando un código protocolar de rechazo (`CONNACK 0x86` / Código 4 en MQTT 3.1.1 / MQTT 5.0).
-2. **La política predeterminada de autorización es `no_match: deny`**. Si un cliente autenticado intenta publicar o suscribirse en un tópico que no esté explícitamente concedido en la tabla `mqtt_acl` de MySQL, el broker ignorará la publicación silenciosamente o retornará fallo (`SUBACK 0x80 / 128` en suscripciones).
-3. **Cualquier script previo o herramienta de pruebas (MQTTX, scripts Python de simulación previa, Mosquitto CLI) que se conecte sin credenciales dejará de funcionar.** Todos los clientes deben migrarse a conexiones autenticadas según las identidades descritas en esta guía.
+A partir de la integracion del Laboratorio 08:
+1. **EMQX rechaza categoricamente cualquier intento de conexion anonima** (sin `username` o con contrasena vacia/invalida):
+   - En **MQTT 3.1.1**, retorna CONNACK con codigo de retorno `4` (`0x04`: *Bad user name or password*).
+   - En **MQTT 5.0**, retorna CONNACK con codigo de razon `0x86` (`134`: *Bad user name or password*).
+2. **La politica predeterminada de autorizacion es `no_match: deny`**. Si un cliente autenticado intenta publicar o suscribirse en un topico no concedido explicitamente en `mqtt_acl`:
+   - En publicaciones: el broker descarta o ignora la publicacion.
+   - En suscripciones: retorna SUBACK con codigo `128` (`0x80`: *Failure / Subscription denied* en MQTT 3.1.1/5.0) o `135` (`0x87`: *Not authorized* en MQTT 5.0).
+3. **Cualquier cliente previo sin credenciales dejara de conectar.** Todos los modulos (dashboard, simulador, herramientas de prueba) deben utilizar las credenciales descritas a continuacion.
 
 ---
 
-## 2. Requisitos Previos y Orden de Preparación
+## 2. Requisitos Previos y Orden Estricto de Preparacion
 
 ### 2.1. Requisitos del Sistema
-- **Docker Desktop** (versión reciente con Compose v2 habilitado y motor Linux activo).
-- **PowerShell 7+** o **Windows PowerShell 5.1** (en entornos Windows) o cliente bash con soporte `curl` y `jq` (si adaptan las llamadas API de los scripts `.ps1`).
-- **Navegador web moderno** (Chrome, Edge o Firefox) para acceder a los clientes web y consolas de administración.
-- **Git** configurado para clonar la rama de trabajo.
+- **Docker Desktop** (con Compose v2 habilitado y motor Linux activo).
+- **PowerShell 7+** o **Windows PowerShell 5.1** (en Windows) o cliente bash con `curl` y `jq`.
+- **Node.js v18+** y **npm** (para ejecutar la suite protocolar de clientes web del Lab 07).
+- **Navegador web moderno** (Chrome, Edge o Firefox).
+- **Git** configurado en la rama `feat/daniel-lab07-lab08`.
 
-### 2.2. Orden Estricto de Preparación
-Para evitar condiciones de carrera o fallos de conexión, siga estrictamente esta secuencia:
+### 2.2. Orden Estricto de Preparacion
+Siga cuidadosamente esta secuencia para evitar condiciones de carrera o fallos de inyeccion:
 ```text
-1. Clonar rama y posicionarse en la raíz del repositorio
+1. Clonar rama y posicionarse en la raiz del repositorio
    ↓
-2. Crear y configurar archivo .env propio desde env.template
+2. Copiar env.template a .env en la raiz
    ↓
-3. Levantar contenedores base (docker compose up -d)
+3. Ejecutar provision_auth_db.ps1 (crea tablas, genera contrasenas y sincroniza MySQL)
    ↓
-4. Esperar que MySQL y EMQX alcancen estado 'healthy'
+4. Iniciar o recrear contenedores con 'docker compose up -d' (para inyectar variables de .env)
    ↓
-5. Aprovisionar tablas, usuarios y ACLs en MySQL (provision_auth_db.ps1)
+5. Verificar disponibilidad real de puertos (MySQL 3307/3306 y EMQX API 18083)
    ↓
-6. Configurar y activar autenticación/autorización en EMQX (configure_emqx_auth.ps1)
+6. Ejecutar configure_emqx_auth.ps1 (activa Authn/Authz MySQL y no_match: deny en EMQX)
    ↓
-7. Reiniciar virtual_nodes si se modificaron credenciales en .env
-   ↓
-8. Verificar telemetría y pruebas funcionales de aceptación
+7. Ejecutar suites de aceptacion y regresion
 ```
+
+> [!WARNING]
+> **REINICIO VS RECREACION DE CONTENEDORES:**  
+> Docker Compose inyecta las variables de entorno de `.env` en los contenedores **unicamente al momento de crearlos**. Si modifica o genera valores en `.env`, ejecutar `docker compose restart` **NO** recarga las nuevas variables. Es indispensable ejecutar `docker compose up -d` (o `docker compose up -d --force-recreate virtual_nodes`).
+
+> [!NOTE]
+> **ESTADO DE SALUD EN DOCKER COMPOSE:**  
+> El archivo `docker-compose.yml` base no define directivas de `healthcheck` de Docker para los servicios. Por lo tanto, los contenedores permaneceran en estado `Up`, sin cambiar a `healthy`. No espere un estado `healthy`; verifique la disponibilidad real mediante conexiones efectivas (ver seccion 4).
 
 ---
 
-## 3. Aprovisionamiento Seguro sin Distribuir Secretos
+## 3. Gestion de Secretos y Variables de Entorno
 
-Por directiva de seguridad del proyecto, el archivo `.env` local contiene contraseñas reales y **está estrictamente excluido del control de versiones por `.gitignore`**. Ningún integrante debe solicitar ni compartir el archivo `.env` de otro compañero.
+Por directiva del proyecto, el archivo `.env` local contiene secretos reales y **esta estrictamente excluido del control de versiones por `.gitignore`**. Ningun integrante debe solicitar ni compartir su archivo `.env`.
 
-### 3.1. Creación del Archivo `.env` Propio
-En la raíz del proyecto, copie la plantilla base provista por Daniel:
-```powershell
-Copy-Item lab08\03_Daniel_Auth_MySQL\env.template .env
-```
+### 3.1. Variables Requeridas en `.env` (Raiz del Proyecto)
+El archivo `.env` debe coincidir con los nombres exactos utilizados por los scripts y Compose:
 
-### 3.2. Variables de Entorno Requeridas
-El archivo `.env` debe definir las siguientes variables (completar con contraseñas seguras generadas localmente):
-
-| Variable | Tipo de Credencial | Descripción y Propósito |
+| Variable | Rol / Ambito | Descripcion |
 | :--- | :--- | :--- |
-| `MYSQL_ROOT_PASSWORD` | Administrativa | Contraseña del superusuario `root` de MySQL (usada para DDL/DCL inicial). |
-| `MYSQL_DATABASE` | Base de Datos | Nombre de la BD relacional (`emqx_db`). |
-| `MYSQL_USER` | Aplicación | Usuario para persistencia de telemetría (`calidad_user`). |
-| `MYSQL_PASSWORD` | Aplicación | Contraseña de `calidad_user`. |
-| `MYSQL_EMQX_USER` | Consulta Operativa | Cuenta de mínimo privilegio de EMQX (`emqx_ro_user`). |
-| `MYSQL_EMQX_PASSWORD` | Consulta Operativa | Contraseña de `emqx_ro_user` (solo lectura en `mqtt_user` y `mqtt_acl`). |
+| `DB_HOST` | Red Docker | Host interno de MySQL (`mysql_server`). |
+| `DB_PORT` | Red Docker | Puerto interno de MySQL (`3306`). |
+| `DB_NAME` | Base de Datos | Nombre de la BD relacional (`emqx_db`). |
+| `EMQX_RO_DB_USER` | Consulta EMQX | Usuario de solo lectura para el broker (`emqx_ro_user`). |
+| `EMQX_RO_DB_PASS` | Consulta EMQX | Contrasena para `emqx_ro_user` (generada automaticamente). |
+| `MQTT_USER_PUB` | Identidad MQTT | Usuario del publicador web (`web_pub_daniel`). |
+| `MQTT_PASS_PUB` | Identidad MQTT | Contrasena para `web_pub_daniel` (generada automaticamente). |
+| `MQTT_USER_SUB` | Identidad MQTT | Usuario del suscriptor web (`web_sub_daniel`). |
+| `MQTT_PASS_SUB` | Identidad MQTT | Contrasena para `web_sub_daniel` (generada automaticamente). |
 | `MQTT_USER_NODES` | Identidad MQTT | Usuario para los 4 nodos simuladores (`esp32_nodes`). |
-| `MQTT_PASS_NODES` | Identidad MQTT | Contraseña para `esp32_nodes`. |
+| `MQTT_PASS_NODES` | Identidad MQTT | Contrasena para `esp32_nodes` (generada automaticamente). |
 | `MQTT_USER_BACKEND` | Identidad MQTT | Usuario del motor de reglas (`backend_rules`). |
-| `MQTT_PASS_BACKEND` | Identidad MQTT | Contraseña para `backend_rules`. |
-| `MQTT_USER_WEB_PUB` | Identidad MQTT | Usuario del cliente web publicador (`web_pub_daniel`). |
-| `MQTT_PASS_WEB_PUB` | Identidad MQTT | Contraseña para `web_pub_daniel`. |
-| `MQTT_USER_WEB_SUB` | Identidad MQTT | Usuario del cliente web suscriptor (`web_sub_daniel`). |
-| `MQTT_PASS_WEB_SUB` | Identidad MQTT | Contraseña para `web_sub_daniel`. |
-| `EMQX_DEFAULT_USER` | Dashboard EMQX | Administrador web de EMQX (`admin`). |
-| `EMQX_DEFAULT_PASSWORD` | Dashboard EMQX | Contraseña del panel web de EMQX. |
+| `MQTT_PASS_BACKEND` | Identidad MQTT | Contrasena para `backend_rules` (generada automaticamente). |
 
-### 3.3. Distinción Vital de Cuentas
-- **Credencial Administrativa (`root`):** Se utiliza única y exclusivamente durante el aprovisionamiento de la base de datos para crear tablas, otorgar privilegios mínimos y poblar datos iniciales. **Nunca debe usarse dentro de la configuración de EMQX.**
-- **Credencial Operativa del Broker (`emqx_ro_user`):** Es la cuenta que EMQX utiliza para consultar `mqtt_user` y `mqtt_acl`. Posee únicamente permisos `SELECT` sobre esas dos tablas y tiene denegada cualquier operación de escritura o acceso a las tablas de telemetría.
-- **Credenciales de Clientes MQTT:** Son identidades operativas de transporte, con contraseñas cifradas en MySQL mediante `SHA-256(password + salt)`.
+### 3.2. Cuentas de MySQL en la Infraestructura
+- **`root` (Administrativa):** Configurada en `docker-compose.yml` (`MYSQL_ROOT_PASSWORD: rootpass`). Utilizada exclusivamente por `provision_auth_db.ps1` para aplicar DDL y conceder permisos.
+- **`emqx_user` (Aplicacion / Telemetria):** Configurada en `docker-compose.yml` (`MYSQL_USER: emqx_user`, `MYSQL_PASSWORD: emqx_pass`). Utilizada por `virtual_simulator/simulator.py` para almacenar series temporales en `telemetria`.
+- **`emqx_ro_user` (Consulta Operativa de Seguridad):** Creada en MySQL por `provision_auth_db.ps1`. Posee permiso exclusivo de `SELECT` sobre `mqtt_user` y `mqtt_acl`. **Tiene estrictamente denegado el acceso a la tabla `telemetria` y permisos de escritura**.
+- **Nota de Terminologia:** Las contrasenas en la tabla `mqtt_user` **no se cifran** (el cifrado es reversible); se almacenan mediante una **funcion hash criptografica unidireccional SHA-256 con sal aleatoria (salt suffix)**: `SHA256(password + salt)`.
 
 ---
 
-## 4. Despliegue y Configuración Automatizada
+## 4. Despliegue y Puesta en Marcha Paso a Paso
 
-### Paso 1: Levantar los Contenedores
+### Paso 1: Preparar `.env` y Aprovisionar Base de Datos
+```powershell
+# 1. Copiar plantilla si no existe .env
+if (-not (Test-Path .env)) { Copy-Item lab08\03_Daniel_Auth_MySQL\env.template .env }
+
+# 2. Aprovisionar tablas, usuarios y generar credenciales seguras
+.\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1
+```
+*El script preservara cualquier variable ajena existente en `.env`, detectara si existen contrasenas vacias o con marcadores `CAMBIAR_POR_...` y las sustituira por contrasenas criptograficas seguras.*
+
+### Paso 2: Iniciar y Recrear Contenedores
 ```powershell
 docker compose up -d
 ```
-Verifique que los 5 contenedores estén operativos:
+Verifique que los 5 contenedores esten operativos (`Up`):
 ```powershell
 docker compose ps
 ```
-Los servicios son: `emqx_broker`, `mysql_server`, `phpmyadmin_gui`, `iot_virtual_nodes`, `web_clients_gui`.
 
-### Paso 2: Aprovisionar la Base de Datos MySQL
-Ejecute el script de aprovisionamiento en modo normal. El script creará las tablas `mqtt_user` y `mqtt_acl`, la cuenta `emqx_ro_user`, y preservará las contraseñas que haya definido en su `.env`:
+### Paso 3: Comprobar Disponibilidad Real de Servicios
+Antes de configurar EMQX, compruebe que los servicios respondan:
 ```powershell
-.\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1
-```
-*(Opcional: Si desea que el script genere automáticamente contraseñas criptográficas seguras y calcule sus sales y hashes SHA-256 en MySQL actualizando su `.env`, ejecute: `.\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1 -RotateCredentials`).*
+# Comprobar MySQL
+docker exec mysql_server mysqladmin ping -u emqx_user -pemqx_pass
 
-### Paso 3: Configurar Seguridad en EMQX
-Ejecute el script de configuración de autenticación y autorización en el broker:
+# Comprobar API de EMQX
+curl -s http://localhost:18083/api/v5/status
+```
+
+### Paso 4: Configurar Seguridad en EMQX
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1
 ```
-El script es completamente **idempotente**:
-- Crea o actualiza la fuente `password_based:mysql` apuntando a `emqx_ro_user`.
-- Crea o actualiza la fuente `authz:mysql` con las consultas exactas y `emqx_ro_user`.
-- Deshabilita la fuente de autorización por archivo (`file`) para evitar ACLs predeterminadas permisivas.
-- Establece la política global `no_match: deny`.
-- Verifica que no existan autenticadores secundarios ni bypasses anónimos.
-- Su ejecución repetida no duplica fuentes ni desconecta las sesiones existentes de los clientes.
+*El script es 100% idempotente: registra `password_based:mysql` y `authz:mysql`, deshabilita la fuente `file`, establece `no_match: deny` y no interrumpe conexiones activas.*
 
-### Paso 4: Comprobar el Estado Efectivo
-Para auditar la configuración activa en EMQX sin modificar nada:
+Para verificar el estado configurado en cualquier momento:
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1 -StatusOnly
 ```
 
 ---
 
-## 5. URLs Locales y Parámetros de Adaptación
+## 5. Endpoints y URLs Locales
 
-### 5.1. Endpoints en la Máquina Local
-| Servicio / Módulo | URL / Endpoint | Protocolo / Puerto | Credenciales |
+| Servicio / Modulo | URL / Endpoint | Protocolo / Puerto | Credenciales |
 | :--- | :--- | :--- | :--- |
-| **Cliente Web Publicador** | `http://localhost:8085/publicador.html` | HTTP / 8085 | Formulario en pantalla (`web_pub_daniel`) |
-| **Cliente Web Suscriptor** | `http://localhost:8085/suscriptor.html` | HTTP / 8085 | Formulario en pantalla (`web_sub_daniel`) |
-| **Broker MQTT WebSocket** | `ws://localhost:8083/mqtt` | WS / 8083 | Subprotocolo `mqttv3.1` o `mqttv5.0` |
-| **Broker MQTT TCP** | `localhost:1883` | TCP / 1883 | Clientes externos (MQTTX, ESP32) |
-| **Broker MQTT Red Docker** | `emqx_broker:1883` | TCP / 1883 | Usado por `virtual_nodes` |
-| **Dashboard EMQX** | `http://localhost:18083` | HTTP / 18083 | `admin` / `$EMQX_DEFAULT_PASSWORD` |
-| **phpMyAdmin** | `http://localhost:8080` | HTTP / 8080 | `root` o `calidad_user` |
-| **MySQL Externo** | `localhost:3307` | TCP / 3307 | Puerto expuesto para herramientas de escritorio |
-
-### 5.2. Adaptación para Acceso Remoto desde Otro Equipo en la Misma LAN
-Si se despliega en una máquina servidora (ej. `192.168.1.50`) y otro integrante accede desde su laptop:
-1. En el navegador del cliente remoto, abrir `http://192.168.1.50:8085/publicador.html` y `http://192.168.1.50:8085/suscriptor.html`.
-2. En el campo **"Broker URL"** de la interfaz web, reemplazar `ws://localhost:8083/mqtt` por `ws://192.168.1.50:8083/mqtt`.
-3. Ingresar el usuario y contraseña correspondientes de su `.env`.
-4. En Windows, asegurar que el Firewall permita conexiones entrantes en los puertos `8085` (HTTP Nginx) y `8083` (WebSocket EMQX).
+| **Cliente Web Publicador** | `http://localhost:8085/publicador.html` | HTTP / 8085 | Formulario web (`web_pub_daniel`) |
+| **Cliente Web Suscriptor** | `http://localhost:8085/suscriptor.html` | HTTP / 8085 | Formulario web (`web_sub_daniel`) |
+| **Broker MQTT WebSocket** | `ws://localhost:8083/mqtt` | WS / 8083 | Autenticacion requerida |
+| **Broker MQTT TCP** | `localhost:1883` | TCP / 1883 | Clientes externos / simuladores |
+| **Dashboard EMQX** | `http://localhost:18083` | HTTP / 18083 | `admin` / `public` |
+| **phpMyAdmin** | `http://localhost:8080` | HTTP / 8080 | `emqx_user` / `emqx_pass` o `root` |
+| **MySQL Externo** | `localhost:3307` | TCP / 3307 | Expuesto para DBeaver / Workbench |
 
 ---
 
-## 6. Guía de Integración para Integrantes
+## 6. Guia para Integrantes del Equipo
 
-### 6.1. Para Alexis (Dashboard / Visualización Web / Suscriptores)
-- **Identidad Asignada para Clientes Web:** Utilizar `web_sub_daniel` (o solicitar a Daniel/Jeanfranco el registro de un nuevo usuario como `web_sub_alexis` mediante `02_permissions_data.sql`).
-- **Tópicos Autorizados para Suscripción:**
-  - `cistern/+/telemetry`: Permite recibir la telemetría de todos los tanques simulados (`cistern/ESP32_FISICO_UNT/telemetry`, `cistern/ESP32_V1_BLOQUE_A/telemetry`, etc.).
-  - `cistern/+/alerts`: Para recibir alertas emitidas por el motor de reglas offline.
-  - `cistern/lab07/prueba`: Para pruebas de control e integración de laboratorio.
-- **Configuración MQTT.js Recomendada:**
+### 6.1. Para Alexis (Dashboard / Visualizacion Web / Suscriptores)
+- **Identidad Asignada:** `web_sub_daniel` (contrasena en `.env`: `MQTT_PASS_SUB`).
+- **Topicos Autorizados para Suscripcion:**
+  - `cistern/+/telemetry`: Telemetria en tiempo real de todos los tanques simulados.
+  - `cistern/+/alerts`: Alertas emitidas por el motor de reglas offline.
+  - `cistern/lab07/prueba`: Topico aislado de prueba de laboratorio.
+- **Ejemplo de Conexion MQTT.js (v5):**
   ```javascript
   const client = mqtt.connect('ws://localhost:8083/mqtt', {
       clientId: 'alexis_dash_' + Math.random().toString(16).substring(2, 10),
-      username: process.env.MQTT_USER_WEB_SUB || 'web_sub_daniel',
-      password: process.env.MQTT_PASS_WEB_SUB,
+      username: process.env.MQTT_USER_SUB || 'web_sub_daniel',
+      password: process.env.MQTT_PASS_SUB,
       clean: true,
-      protocolVersion: 5 // MQTT v5.0 recomendado
+      protocolVersion: 5
   });
   ```
-- **Manejo de Errores de Autenticación:**
-  Si el broker rechaza la conexión con código `0x86` (bad user/pass), el cliente no debe ciclar reconexiones automáticamente. Debe capturar el evento `client.on('error', ...)` o revisar el código del `connack` y llamar a `client.end(true)`.
+- **Control de Error de Autenticacion:** Si el broker retorna rechazo (`0x86` / `4`), capture `client.on('error', ...)` y llame a `client.end(true)` para evitar bucles infinitos de reconexion.
 
-### 6.2. Para Mario (QA / Validación de Seguridad y Regresión)
-Se dispone de dos suites de prueba automatizadas listas para su ejecución:
+### 6.2. Para Mario (QA y Automatizacion de Pruebas)
+Se han dispuesto ejecutores reproducibles que no exponen contrasenas en linea de comandos ni distribuyen `.env` completo en los contenedores:
 
-#### A. Suite Breve de Aceptación (Fase 6)
-Verifica los 4 controles fundamentales (paridad pub/sub, rechazo de clave errónea, rechazo de tópico denegado y telemetría de nodos):
+#### A. Suite Breve de Aceptacion (4 Controles Clave)
+Ejecuta la verificacion de paridad pub/sub, rechazo de contrasena, denegacion ACL, auditoria real de 5 sesiones en EMQX y crecimiento de telemetria en MySQL:
 ```powershell
-docker exec -i iot_virtual_nodes python /app/lab08/03_Daniel_Auth_MySQL/tests/test_acceptance_phase6.py
-```
-*Salida esperada:*
-- `[CONTROL A PASS]`: Publicación y recepción idénticas en `cistern/lab07/prueba`.
-- `[CONTROL B PASS]`: Contraseña incorrecta rechazada (`CONNACK 4 / 0x86`).
-- `[CONTROL C PASS]`: Permiso denegado verificado (`SUBACK 128 / 0x80`).
-- `[CONTROL D PASS]`: Nodos y backend activos con crecimiento de telemetría.
-- `TODOS LOS CONTROLES DE LA FASE 6 PASARON CON EXITO`.
-
-#### B. Matriz Completa de Regresión Protocolar (Casos A - I)
-Audita exhaustivamente cada permiso de publicación y suscripción de cada una de las 4 identidades:
-```powershell
-docker exec -i iot_virtual_nodes python /app/lab08/03_Daniel_Auth_MySQL/tests/test_matrix_phase5.py
+powershell -ExecutionPolicy Bypass -File .\lab08\03_Daniel_Auth_MySQL\tests\run_tests_docker.ps1 -Suite Acceptance
 ```
 
-#### C. Verificación Manual de Permisos Denegados
-Para evidenciar que las ACLs están funcionando:
-1. Conectar con `web_pub_daniel` e intentar suscribirse a `cistern/+/telemetry`. El broker retornará `SUBACK 128` (0x80, suscripción rechazada).
-2. Conectar con `web_sub_daniel` e intentar publicar en `cistern/lab07/prueba`. La publicación será descartada por el broker (o rechazada si se usa QoS 1/2).
-3. Intentar conectar sin usuario o con contraseña errónea: rechazo inmediato con `CONNACK 0x86`.
+#### B. Matriz Completa de Regresion Protocolar (Casos A - I)
+Verifica exhaustivamente cada combinacion de permisos para todas las identidades:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\lab08\03_Daniel_Auth_MySQL\tests\run_tests_docker.ps1 -Suite Matrix
+```
+
+#### C. Suite de Pruebas de Transporte WebSockets (Lab 07)
+Ejecuta las pruebas de protocolo MQTT v5 sobre WebSockets (P01–P10):
+```powershell
+# Instalar paquete mqtt si no esta instalado
+npm install --no-save mqtt
+
+# Ejecutar suite
+node lab07/03_Daniel_Clientes_Web/tests/test_suite_lab07.js
+```
+
+#### D. Prueba Unitaria de Preservacion de `.env`
+Verifica sobre un archivo temporal aislado que `provision_auth_db.ps1` preserva variables ajenas, no altera credenciales existentes y sustituye marcadores de plantilla (Casos A–F):
+```powershell
+powershell -ExecutionPolicy Bypass -File .\lab08\03_Daniel_Auth_MySQL\tests\test_provision_env_logic.ps1
+```
+
+#### E. Pruebas Negativas del Propio Verificador de Aceptacion
+Demuestra que el verificador detecta sesiones faltantes, usuarios incorrectos, desconexiones o falta de crecimiento en telemetria:
+```powershell
+docker exec -i iot_virtual_nodes python /app/test_acceptance_phase6.py --test-verifier-negatives
+```
 
 ---
 
-## 7. Procedimiento de Recuperación y Rollback
+## 7. Procedimiento de Recuperacion y Rollback
 
-### 7.1. Recuperación tras Pérdida de Contenedor EMQX
-Si el contenedor de EMQX es eliminado o recreado (`docker compose up -d --force-recreate emqx`), **la configuración de autenticación y autorización se preserva automáticamente** porque reside en el volumen nombrado persistente `emqx_data:/opt/emqx/data` y el nodo posee un FQDN estático (`emqx@node1.emqxnet`).
-- No es necesario ejecutar ningún script de reconfiguración.
-- El broker se restablece en menos de 5 segundos y los clientes reanudan su conexión.
+### 7.1. Recuperacion tras Recreacion de EMQX
+El volumen nombrado `emqx_data` y el nombre estatico `emqx@node1.emqxnet` preservan la configuracion en Mnesia y `cluster.hocon`. Si se recrea el contenedor con `docker compose up -d --force-recreate emqx`, el broker se recupera en ~4 segundos conservando Authn y Authz sin requerir scripts adicionales.
 
-### 7.2. Recuperación si se Pierde el Volumen de Datos
-Si se ejecutó `docker compose down -v` o se dañó el volumen `emqx_data`:
-1. Levantar el stack: `docker compose up -d`
-2. Reaprovisionar la base MySQL si se perdió: `.\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1`
-3. Reconfigurar EMQX en caliente: `.\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1`
-4. Reiniciar `virtual_nodes` para que restablezca suscripciones: `docker compose restart virtual_nodes`
+### 7.2. Recuperacion si se Pierde el Volumen o la Base de Datos
+Si se destruyen los volumenes (`docker compose down -v`):
+1. `docker compose up -d`
+2. `.\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1`
+3. `docker compose up -d --force-recreate virtual_nodes`
+4. `.\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1`
 
-### 7.3. Procedimiento de Rollback a Modo Anónimo (Solo Emergencias de QA)
-Si Mario o el equipo necesitan realizar temporalmente pruebas con herramientas antiguas que no soportan autenticación:
+### 7.3. Rollback a Modo Abierto / Anonimo (Solo Emergencias de QA)
+Si se necesita desactivar temporalmente la seguridad para pruebas con clientes legados:
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1 -Rollback
 ```
-Este comando:
-- Deshabilita la autenticación MySQL en EMQX.
-- Deshabilita la autorización MySQL.
-- Restaura la política de autorización a `no_match: allow`.
-- Permite conexiones anónimas inmediatas.
-
 Para volver a activar la seguridad obligatoria:
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1
@@ -240,18 +239,12 @@ Para volver a activar la seguridad obligatoria:
 
 ---
 
-## 8. Políticas de Persistencia y Cuidado de Datos
+## 8. Politicas de Operacion Segura
 
-1. **Nunca ejecutar `docker compose down -v`** en entornos de trabajo compartidos, ya que destruirá tanto el historial de telemetría en `mysql_data` como la configuración de EMQX en `emqx_data`.
-2. Para detener los servicios de forma segura use:
+1. **Nunca ejecutar `docker compose down -v`**, ya que destruira el historico de telemetria en `mysql_data` y la configuracion de EMQX en `emqx_data`.
+2. Para detener temporalmente el stack: `docker compose stop`.
+3. Para reanudar el stack: `docker compose start`.
+4. Para consultar el recuento de telemetria en cualquier momento:
    ```powershell
-   docker compose stop
-   ```
-3. Para reanudarlos:
-   ```powershell
-   docker compose start
-   ```
-4. El contenedor `iot_virtual_nodes` genera registros en la base de datos a un ritmo aproximado de 1 a 2 inserciones por segundo divididas entre los 4 nodos simuladores. La tabla `telemetria` supera los 22,000 registros verificados. Para consultar el recuento en cualquier momento:
-   ```powershell
-   docker exec -i mysql_server mysql -u calidad_user -p emqx_db -e "SELECT COUNT(*) AS total_telemetria FROM telemetria;"
+   docker exec -i mysql_server mysql -u emqx_user -pemqx_pass emqx_db -e "SELECT NOW(), COUNT(*), MAX(fecha_hora) FROM telemetria;"
    ```
