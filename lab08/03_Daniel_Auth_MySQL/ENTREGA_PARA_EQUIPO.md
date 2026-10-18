@@ -44,17 +44,19 @@ Siga cuidadosamente esta secuencia para evitar condiciones de carrera o fallos d
 ```text
 1. Clonar rama y posicionarse en la raiz del repositorio
    ↓
-2. Copiar env.template a .env en la raiz
+2. Preparar .env desde la plantilla unicamente si no existe (env.template -> .env)
    ↓
-3. Ejecutar provision_auth_db.ps1 (crea tablas, genera contrasenas y sincroniza MySQL)
+3. Iniciar el servicio MySQL ('docker compose up -d mysql')
    ↓
-4. Iniciar o recrear contenedores con 'docker compose up -d' (para inyectar variables de .env)
+4. Esperar y comprobar que MySQL acepta conexiones ('docker exec mysql_server mysqladmin ping ...')
    ↓
-5. Verificar disponibilidad real de puertos (MySQL 3307/3306 y EMQX API 18083)
+5. Ejecutar provision_auth_db.ps1 (crea tablas, genera contrasenas y sincroniza MySQL)
    ↓
-6. Ejecutar configure_emqx_auth.ps1 (activa Authn/Authz MySQL y no_match: deny en EMQX)
+6. Iniciar o actualizar los demas servicios con las credenciales generadas ('docker compose up -d')
    ↓
-7. Ejecutar suites de aceptacion y regresion
+7. Comprobar disponibilidad de EMQX (puerto 18083) y ejecutar configure_emqx_auth.ps1
+   ↓
+8. Ejecutar las pruebas ya documentadas (suites de aceptacion, regresion y clientes web)
 ```
 
 > [!WARNING]
@@ -94,23 +96,42 @@ El archivo `.env` debe coincidir con los nombres exactos utilizados por los scri
 - **`root` (Administrativa):** Configurada en `docker-compose.yml` (`MYSQL_ROOT_PASSWORD: rootpass`). Utilizada exclusivamente por `provision_auth_db.ps1` para aplicar DDL y conceder permisos.
 - **`emqx_user` (Aplicacion / Telemetria):** Configurada en `docker-compose.yml` (`MYSQL_USER: emqx_user`, `MYSQL_PASSWORD: emqx_pass`). Utilizada por `virtual_simulator/simulator.py` para almacenar series temporales en `telemetria`.
 - **`emqx_ro_user` (Consulta Operativa de Seguridad):** Creada en MySQL por `provision_auth_db.ps1`. Posee permiso exclusivo de `SELECT` sobre `mqtt_user` y `mqtt_acl`. **Tiene estrictamente denegado el acceso a la tabla `telemetria` y permisos de escritura**.
-- **Nota de Terminologia:** Las contrasenas en la tabla `mqtt_user` **no se cifran** (el cifrado es reversible); se almacenan mediante una **funcion hash criptografica unidireccional SHA-256 con sal aleatoria (salt suffix)**: `SHA256(password + salt)`.
+- **Nota de Terminologia:** Las contrasenas en la tabla `mqtt_user` **no se cifran** (el cifrado es reversible); se almacenan mediante una **funcion hash criptografica unidireccional SHA-256 con sal fija por identidad (salt suffix)**: `SHA256(password + salt)`.
 
 ---
 
 ## 4. Despliegue y Puesta en Marcha Paso a Paso
 
-### Paso 1: Preparar `.env` y Aprovisionar Base de Datos
+### Paso 1: Preparar `.env` desde la Plantilla (Unicamente si no Existe)
 ```powershell
-# 1. Copiar plantilla si no existe .env
-if (-not (Test-Path .env)) { Copy-Item lab08\03_Daniel_Auth_MySQL\env.template .env }
+if (-not (Test-Path .env)) {
+    Copy-Item lab08\03_Daniel_Auth_MySQL\env.template .env
+    Write-Host "Archivo .env creado desde la plantilla."
+} else {
+    Write-Host "Archivo .env ya existe. Se conserva la configuracion actual."
+}
+```
 
-# 2. Aprovisionar tablas, usuarios y generar credenciales seguras
+### Paso 2: Iniciar MySQL y Comprobar que Acepta Conexiones
+Inicie el servicio de base de datos MySQL (nombre de servicio real `mysql` en `docker-compose.yml`):
+```powershell
+docker compose up -d mysql
+```
+Espere y compruebe que el motor MySQL este listo para responder consultas administrativas:
+```powershell
+docker exec mysql_server mysqladmin ping -u root -prootpass
+```
+*(Debe responder `mysqld is alive` con codigo de salida 0 antes de continuar).*
+
+### Paso 3: Ejecutar el Aprovisionamiento de Autenticacion en MySQL
+Con MySQL operativo y aceptando conexiones, ejecute el aprovisionamiento de tablas y credenciales:
+```powershell
 .\lab08\03_Daniel_Auth_MySQL\provision_auth_db.ps1
 ```
-*El script preservara cualquier variable ajena existente en `.env`, detectara si existen contrasenas vacias o con marcadores `CAMBIAR_POR_...` y las sustituira por contrasenas criptograficas seguras.*
+*El script preservara cualquier variable ajena existente en `.env`, detectara si existen contrasenas vacias o con marcadores `CAMBIAR_POR_...` y las sustituira por contrasenas criptograficas seguras, sincronizando `mqtt_user`, `mqtt_acl` y creando `emqx_ro_user`.*
 
-### Paso 2: Iniciar y Recrear Contenedores
+### Paso 4: Iniciar o Actualizar los Demas Servicios
+Con el archivo `.env` poblado con las contrasenas generadas y la base de datos lista, inicie o recree todos los demas servicios para inyectarles las variables de entorno:
 ```powershell
 docker compose up -d
 ```
@@ -119,17 +140,14 @@ Verifique que los 5 contenedores esten operativos (`Up`):
 docker compose ps
 ```
 
-### Paso 3: Comprobar Disponibilidad Real de Servicios
-Antes de configurar EMQX, compruebe que los servicios respondan:
+### Paso 5: Comprobar Disponibilidad de EMQX y Configurar Seguridad
+Compruebe que la API administrativa de EMQX responda:
 ```powershell
-# Comprobar MySQL
-docker exec mysql_server mysqladmin ping -u emqx_user -pemqx_pass
-
-# Comprobar API de EMQX
 curl -s http://localhost:18083/api/v5/status
 ```
+*(Debe retornar `{"status":"Running"}`).*
 
-### Paso 4: Configurar Seguridad en EMQX
+A continuacion, aplique la configuracion de seguridad en EMQX:
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1
 ```
@@ -138,6 +156,16 @@ curl -s http://localhost:18083/api/v5/status
 Para verificar el estado configurado en cualquier momento:
 ```powershell
 .\lab08\03_Daniel_Auth_MySQL\configure_emqx_auth.ps1 -StatusOnly
+```
+
+### Paso 6: Ejecutar las Pruebas Documentadas
+Una vez finalizada la secuencia de arranque y configuracion, ejecute las pruebas ya documentadas (ver Seccion 6 para los detalles de cada suite):
+```powershell
+# Suite de aceptacion en contenedor aislado
+powershell -ExecutionPolicy Bypass -File .\lab08\03_Daniel_Auth_MySQL\tests\run_tests_docker.ps1 -Suite Acceptance
+
+# Suite de transporte WebSockets (Lab 07)
+node lab07/03_Daniel_Clientes_Web/tests/test_suite_lab07.js
 ```
 
 ---
