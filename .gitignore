@@ -1,0 +1,24 @@
+# Archivos de respaldo de base de datos
+backups/
+*.sql.bak
+*.dump
+
+# Secretos y variables de entorno reales
+.env
+*.env.local
+secrets/
+*.key
+*.pem
+
+# Dependencias locales
+node_modules/
+
+# Cache de Python y compilados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales de pruebas y entorno
+*.tmp*
+.tmp*
+.test_env*

@@ -6,20 +6,26 @@ networks:
 volumes:
   mysql_data:
     driver: local
+  emqx_data:
+    driver: local
 
 services:
   # Broker de Mensajería MQTT EMQX
   emqx:
     image: emqx/emqx:5.8.0
     container_name: emqx_broker
+    hostname: node1.emqxnet
     restart: always
     ports:
       - "1883:1883"      # Tráfico estándar MQTT M2M
       - "8083:8083"      # MQTT sobre WebSockets (para frontend React)
       - "18083:18083"    # Consola Web de Administración EMQX
     environment:
+      - EMQX_NODE_NAME=emqx@node1.emqxnet
       - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
       - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
+    volumes:
+      - emqx_data:/opt/emqx/data
     networks:
       - emqxnet
 
@@ -73,5 +79,21 @@ services:
       - DB_USER=emqx_user
       - DB_PASSWORD=emqx_pass
       - DB_NAME=emqx_db
+      - MQTT_USER_NODES=${MQTT_USER_NODES:-esp32_nodes}
+      - MQTT_PASS_NODES=${MQTT_PASS_NODES}
+      - MQTT_USER_BACKEND=${MQTT_USER_BACKEND:-backend_rules}
+      - MQTT_PASS_BACKEND=${MQTT_PASS_BACKEND}
+    networks:
+      - emqxnet
+
+  # Servidor Web Estático para Clientes de Publicación y Suscripción (Lab 07 Daniel)
+  web_clients:
+    image: nginx:1.27-alpine
+    container_name: web_clients_gui
+    restart: always
+    ports:
+      - "8085:80"
+    volumes:
+      - ./lab07/03_Daniel_Clientes_Web:/usr/share/nginx/html:ro
     networks:
       - emqxnet

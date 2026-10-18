@@ -9,6 +9,13 @@ import mysql.connector
 BROKER_HOST = os.getenv("BROKER_HOST", "emqx_broker")
 BROKER_PORT = int(os.getenv("BROKER_PORT", 1883))
 
+# Credenciales MQTT de Servicio (Autenticación EMQX 5.8)
+MQTT_NODES_USER = os.getenv("MQTT_USER_NODES", "esp32_nodes")
+MQTT_NODES_PASS = os.getenv("MQTT_PASS_NODES", "")
+
+MQTT_BACKEND_USER = os.getenv("MQTT_USER_BACKEND", "backend_rules")
+MQTT_BACKEND_PASS = os.getenv("MQTT_PASS_BACKEND", "")
+
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "mysql_server"),
     "user": os.getenv("DB_USER", "emqx_user"),
@@ -81,6 +88,19 @@ def on_command_received(client, userdata, message):
 
 def run_simulated_node(profile):
     client = mqtt.Client(client_id=profile["device_id"], userdata=profile)
+    if MQTT_NODES_USER and MQTT_NODES_PASS:
+        client.username_pw_set(MQTT_NODES_USER, MQTT_NODES_PASS)
+
+    command_topic = f"cistern/{profile['device_id']}/commands"
+
+    def on_connect(c, userdata, flags, rc):
+        if rc == 0:
+            c.subscribe(command_topic, qos=1)
+            print(f"[{userdata.get('device_id')}] Conectado a EMQX y suscrito a {command_topic} (rc=0)", flush=True)
+        else:
+            print(f"[{userdata.get('device_id')}] Fallo de conexión MQTT: rc={rc}", flush=True)
+
+    client.on_connect = on_connect
     client.on_message = on_command_received
 
     connected = False
@@ -91,8 +111,6 @@ def run_simulated_node(profile):
         except Exception:
             time.sleep(2)
 
-    command_topic = f"cistern/{profile['device_id']}/commands"
-    client.subscribe(command_topic, qos=1)
     client.loop_start()
 
     telemetry_topic = f"cistern/{profile['device_id']}/telemetry"
@@ -224,6 +242,17 @@ def run_backend_rules():
             print(f"Error procesando mensaje entrante: {ex}", flush=True)
 
     backend_client = mqtt.Client(client_id="BACKEND_RULES_ENGINE")
+    if MQTT_BACKEND_USER and MQTT_BACKEND_PASS:
+        backend_client.username_pw_set(MQTT_BACKEND_USER, MQTT_BACKEND_PASS)
+
+    def on_backend_connect(c, userdata, flags, rc):
+        if rc == 0:
+            c.subscribe("cistern/+/telemetry", qos=1)
+            print("Motor de Reglas Offline conectado a EMQX y suscrito a 'cistern/+/telemetry' (rc=0)", flush=True)
+        else:
+            print(f"Motor de Reglas Offline fallo de conexión MQTT: rc={rc}", flush=True)
+
+    backend_client.on_connect = on_backend_connect
     backend_client.on_message = on_telemetry_received
 
     connected = False
@@ -234,7 +263,6 @@ def run_backend_rules():
         except Exception:
             time.sleep(2)
 
-    backend_client.subscribe("cistern/+/telemetry", qos=1)
     print("Motor de Reglas Offline iniciado y escuchando telemetría en 'cistern/+/telemetry'...", flush=True)
     backend_client.loop_forever()
 
