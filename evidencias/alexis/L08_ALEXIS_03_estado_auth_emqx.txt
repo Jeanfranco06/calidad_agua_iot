@@ -1,0 +1,23 @@
+=== CONFIGURACION DE SEGURIDAD EMQX 5.8 (Authn y Authz MySQL) ===
+
+Consultando configuracion activa en EMQX...
+
+--- Autenticadores Registrados ---
+
+id                   mechanism      backend enable
+--                   ---------      ------- ------
+password_based:mysql password_based mysql     True
+
+
+
+--- Ajustes Globales de Autorizacion ---
+no_match    : deny
+deny_action : ignore
+cache enable: True
+
+--- Fuentes de Autorizacion (ACL) ---
+
+type  enable
+----  ------
+mysql   True
+file   False

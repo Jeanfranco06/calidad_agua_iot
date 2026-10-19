@@ -1,0 +1,59 @@
+=== SUITE DE AUDITORIA DE PROTOCOLO MQTT V5 (LAB 07) ===
+Endpoint Broker : ws://localhost:8083/mqtt
+Identidad Pub   : web_pub_daniel
+Identidad Sub   : web_sub_daniel
+
+[P01] Conexion independiente de dos clientes autenticados...
+[P02] Publicacion y recepcion con QoS 0...
+[P03] Publicacion y recepcion con QoS 1 (PUBACK)...
+[P04] Validacion sintactica previa de JSON (Prueba Unitaria de Parser)...
+[P05] Revocacion de suscripcion (unsubscribe)...
+[P07] Fallo de socket y re-suscripcion automatica...
+[P09] Captura de telemetria pasiva...
+[P06] Desconexion voluntaria y verificacion...
+
+=== RESUMEN DE RESULTADOS DE SUITE LAB 07 ===
+{
+  "P01": {
+    "subId": "web_sub_daniel_6cb34b",
+    "pubId": "web_pub_daniel_9ce232",
+    "subInEmqx": true,
+    "pubInEmqx": true,
+    "status": "APROBADA"
+  },
+  "P02": {
+    "received": true,
+    "qos": 0,
+    "status": "APROBADA"
+  },
+  "P03": {
+    "grantedQos": 1,
+    "pubackMessageId": 27426,
+    "receivedQos": 1,
+    "status": "APROBADA"
+  },
+  "P04": {
+    "validationBlocked": true,
+    "errorDetected": true,
+    "status": "APROBADA"
+  },
+  "P05": {
+    "messageSuppressedDuringUnsub": true,
+    "status": "APROBADA"
+  },
+  "P07": {
+    "reconnected": true,
+    "recoveredMessageReceived": true,
+    "status": "APROBADA"
+  },
+  "P09": {
+    "telemetrySamples": 6,
+    "status": "APROBADA"
+  },
+  "P06": {
+    "sessionsRemoved": true,
+    "status": "APROBADA"
+  }
+}
+
+TODAS LAS PRUEBAS PROTOCOLARES DE LA SUITE LAB 07 PASARON EXITOSAMENTE.

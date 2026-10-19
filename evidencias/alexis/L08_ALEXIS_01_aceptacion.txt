@@ -1,0 +1,32 @@
+
+>>> EJECUTANDO SUITE DE ACEPTACION (test_acceptance_phase6.py)...
+=== EJECUTANDO PRUEBA BREVE DE ACEPTACION - FASE 6 (ACTUALIZADA) ===
+
+--- CONTROL A: Envio y Recepcion Identica en cistern/lab07/prueba ---
+  [RESULTADO A] SUBACK Granted: (1,) | PUBACK OK: True | Identico: True
+
+--- CONTROL B: Contrasena Incorrecta y Rechazo Sin Reintentos ---
+  [RESULTADO B] CONNACK Codigo retornado: 4
+
+--- CONTROL C: Operacion Autorizada vs Operacion Denegada ---
+  [RESULTADO C] Operacion autorizada publicada: True | Operacion denegada SUBACK: (128,)
+
+--- CONTROL D: Auditoria Real de Sesiones y Telemetria ---
+  [D.1 Sesiones EMQX] Clientes encontrados: 5
+    - ESP32_FISICO_UNT: usuario='esp32_nodes' (esperado='esp32_nodes'), estado=CONECTADO
+    - ESP32_V1_BLOQUE_A: usuario='esp32_nodes' (esperado='esp32_nodes'), estado=CONECTADO
+    - ESP32_V2_BLOQUE_B: usuario='esp32_nodes' (esperado='esp32_nodes'), estado=CONECTADO
+    - ESP32_V3_INCIDENTE: usuario='esp32_nodes' (esperado='esp32_nodes'), estado=CONECTADO
+    - BACKEND_RULES_ENGINE: usuario='backend_rules' (esperado='backend_rules'), estado=CONECTADO
+  [D.2 Telemetria t1] Hora DB: 2026-10-18 20:29:26 | Total filas: 12474 | Ultimo registro: 2026-10-18 20:29:26
+  [D.2 Telemetria t2] Hora DB: 2026-10-18 20:29:29 | Total filas: 12478 | Ultimo registro: 2026-10-18 20:29:29
+  [D.2 Crecimiento observado] +4 filas en 3.0 segundos.
+  [RESULTADO D EXITOSO] 5/5 sesiones activas con identidades verificadas (esp32_nodes, backend_rules). Telemetria DB crecio +4 filas en 3s.
+
+=== RESUMEN DE CONTROLES DE ACEPTACION ===
+Control A: APROBADO - Mensaje transmitido y recibido con paridad exacta. QoS=1
+Control B: APROBADO - Conexion rechazada deterministamente con rc=4.
+Control C: APROBADO - Publicacion permitida (QoS 1 ACK); Suscripcion rechazada con SUBACK=128.
+Control D: APROBADO - 5/5 sesiones activas con identidades verificadas (esp32_nodes, backend_rules). Telemetria DB crecio +4 filas en 3s.
+
+TODOS LOS CONTROLES DE ACEPTACION (A - D) PASARON EXITOSAMENTE.

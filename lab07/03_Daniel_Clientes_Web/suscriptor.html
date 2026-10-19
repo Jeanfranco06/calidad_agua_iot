@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Suscriptor Web MQTT — Lab 07 Daniel</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261018-password">
   <script src="vendor/mqtt.min.js"></script>
   <script src="shared.js"></script>
 </head>
@@ -16,7 +16,7 @@
         <p>Laboratorio 07 — Apartado 4.1.4 | Integrante: Daniel</p>
       </div>
       <div class="nav-links">
-        <a href="publicador.html">Ir al Publicador</a>
+        <a href="publicador.html" target="_blank" rel="noopener">Abrir Publicador en otra pestaña</a>
         <a href="suscriptor.html" style="border-color: var(--accent-blue);">Suscriptor</a>
       </div>
     </header>
@@ -147,6 +147,7 @@
     // Variables de estado
     let client = null;
     let manualDisconnect = false;
+    let authRejected = false;
     let isConnecting = false;
     let activeSubscriptions = new Set();
     let totalMessagesReceived = 0;
@@ -199,6 +200,7 @@
       }
 
       manualDisconnect = false;
+      authRejected = false;
       isConnecting = true;
 
       btnConnect.disabled = true;
@@ -264,7 +266,7 @@
 
         // Evento: reconnect
         client.on("reconnect", () => {
-          if (manualDisconnect) return;
+          if (manualDisconnect || authRejected) return;
           updateStatusBadge(connBadge, "reconnecting", "RECONECTANDO...");
           appendSafeLog(lifecycleContainer, {
             type: "warn",
@@ -280,6 +282,7 @@
           const isAuthFailure = msg.includes("not authorized") || msg.includes("bad user") || msg.includes("connack") || err.code === 4 || err.code === 5 || err.code === 134 || err.code === 135;
 
           if (isAuthFailure) {
+            authRejected = true;
             updateStatusBadge(connBadge, "error", "RECHAZO DE CREDENCIALES");
             appendSafeLog(lifecycleContainer, {
               type: "error",
@@ -312,7 +315,9 @@
           btnSubscribe.disabled = true;
           btnUnsubscribe.disabled = true;
 
-          if (manualDisconnect) {
+          if (authRejected) {
+            updateStatusBadge(connBadge, "error", "RECHAZO DE CREDENCIALES");
+          } else if (manualDisconnect) {
             updateStatusBadge(connBadge, "disconnected", "DESCONECTADO");
             appendSafeLog(lifecycleContainer, {
               type: "info",
@@ -331,6 +336,7 @@
 
         // Evento: offline
         client.on("offline", () => {
+          if (authRejected) return;
           btnSubscribe.disabled = true;
           btnUnsubscribe.disabled = true;
           updateStatusBadge(connBadge, "reconnecting", "OFFLINE");
@@ -348,12 +354,13 @@
           if (packet.cmd === "connack") {
             const reasonCode = packet.reasonCode !== undefined ? packet.reasonCode : packet.returnCode;
             if (reasonCode && reasonCode >= 128) {
+              authRejected = true;
               appendSafeLog(lifecycleContainer, {
                 type: "error",
                 meta: `[MQTT CONNACK: RECHAZO] ${formatTimestamp()} | ReasonCode: ${reasonCode} (0x${reasonCode.toString(16)})`,
                 text: `Conexión rechazada por EMQX 5.8: código ${reasonCode} (${reasonCode === 134 ? 'Bad username or password' : (reasonCode === 135 ? 'Not authorized' : 'Connection refused')}). Cancelando reconexión.`
               });
-              updateStatusBadge(connBadge, "error", "ACCESO DENEGADO");
+              updateStatusBadge(connBadge, "error", "RECHAZO DE CREDENCIALES");
               client.end(true);
               isConnecting = false;
               btnConnect.disabled = false;

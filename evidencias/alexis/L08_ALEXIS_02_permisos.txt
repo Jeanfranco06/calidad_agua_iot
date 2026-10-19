@@ -1,0 +1,26 @@
+
+>>> EJECUTANDO MATRIZ DE SEGURIDAD PROTOCOLAR (test_matrix_phase5.py)...
+=== INICIANDO MATRIZ DE PRUEBAS DE SEGURIDAD EMQX 5.8 (FASE 5) ===
+
+[PASS] Pruebas A: Conexión válida (pub y sub) -> APROBADO. Ambos clientes conectaron con rc=0 (CONNACK Accepted).
+[PASS] Pruebas B: Contraseña incorrecta -> APROBADO. Conexión denegada con rc=4 (Bad user name or password).
+[PASS] Pruebas C: Usuario inexistente -> APROBADO. Conexión denegada con rc=5 (Usuario no registrado en mqtt_user).
+[PASS] Pruebas D: Sin credenciales (Anónimo) -> APROBADO. Conexión rechazada con rc=4 (Autenticación requerida por EMQX).
+[PASS] Pruebas E: Entrega de mensaje autorizado -> APROBADO. Mensaje publicado por web_pub_daniel y recibido por web_sub_daniel en 'cistern/lab07/prueba'.
+[PASS] Pruebas F: Publicador suscribiendo (Denegado) -> APROBADO. SUBACK rechazado con código: (128,) (Not authorized).
+[PASS] Pruebas G: Suscriptor publicando (Denegado) -> APROBADO. Mensaje no entregado: la regla ACL de web_sub_daniel prohíbe la acción 'publish'.
+[PASS] Pruebas H: Publicación fuera de tópico permitido (Denegado) -> APROBADO. web_pub_daniel no pudo publicar en 'cistern/lab08/aislado_denegado' (restringido a 'cistern/lab07/prueba').
+[PASS] Pruebas I: Suplantación de Client ID (Spoofing Denegado) -> APROBADO. Cliente autenticado como web_pub_daniel con ClientID suplantado no pudo publicar en 'cistern/ESP32_TEST/commands'.
+
+=== RESUMEN DE EJECUCIÓN ===
+Prueba A: APROBADO - Conexión válida (pub y sub)
+Prueba B: APROBADO - Contraseña incorrecta
+Prueba C: APROBADO - Usuario inexistente
+Prueba D: APROBADO - Sin credenciales (Anónimo)
+Prueba E: APROBADO - Entrega de mensaje autorizado
+Prueba F: APROBADO - Publicador suscribiendo (Denegado)
+Prueba G: APROBADO - Suscriptor publicando (Denegado)
+Prueba H: APROBADO - Publicación fuera de tópico permitido (Denegado)
+Prueba I: APROBADO - Suplantación de Client ID (Spoofing Denegado)
+
+TODAS LAS PRUEBAS DE SEGURIDAD PROTOCOLAR (A - I) FUERON SUPERADAS EXITOSAMENTE.

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Acceso a los clientes web MQTT del proyecto de monitoreo de turbidez.">
+  <title>Clientes web MQTT — Calidad del agua IoT</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">
+        <h1>Calidad del agua IoT</h1>
+        <p>Clientes web MQTT para los laboratorios 07 y 08</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="card" aria-labelledby="inicio-title">
+        <h2 class="card-title" id="inicio-title">Selecciona un cliente</h2>
+        <p>Abre el suscriptor y el publicador en pestañas distintas para comprobar el envío y la recepción de mensajes.</p>
+        <nav class="nav-links" aria-label="Clientes MQTT" style="margin-top: 16px; flex-wrap: wrap;">
+          <a href="suscriptor.html">Abrir suscriptor</a>
+          <a href="publicador.html">Abrir publicador</a>
+        </nav>
+      </section>
+      <p class="info-box">Para observar los nodos del proyecto, suscríbete a <code>cistern/+/telemetry</code>. Usa <code>cistern/lab07/prueba</code> para enviar mensajes de prueba.</p>
+    </main>
+  </div>
+</body>
+</html>

@@ -95,7 +95,8 @@ if ($Rollback) {
     }
 
     try {
-        $enableFile = @{ enable = $true } | ConvertTo-Json
+        $fileSource = Invoke-RestMethod -Uri "$EmqxApiUrl/authorization/sources/file" -Headers $headers
+        $enableFile = @{ type = "file"; enable = $true; rules = $fileSource.rules } | ConvertTo-Json -Depth 5
         Invoke-RestMethod -Uri "$EmqxApiUrl/authorization/sources/file" -Method Put -Headers $headers -Body $enableFile | Out-Null
         Write-Host "  [OK] Fuente de autorizacion basada en archivo re-habilitada." -ForegroundColor Green
     } catch {
@@ -215,11 +216,13 @@ Write-Host "`n[4/4] Inhabilitando fuentes de autorizacion predeterminadas que pu
 
 try {
     # Deshabilitar regla file para que no aplique {allow, all}
-    $disableFile = @{ enable = $false } | ConvertTo-Json
+    $fileSource = Invoke-RestMethod -Uri "$EmqxApiUrl/authorization/sources/file" -Headers $headers
+    $disableFile = @{ type = "file"; enable = $false; rules = $fileSource.rules } | ConvertTo-Json -Depth 5
     Invoke-RestMethod -Uri "$EmqxApiUrl/authorization/sources/file" -Method Put -Headers $headers -Body $disableFile | Out-Null
     Write-Host "  [OK] Fuente de autorizacion basada en archivo deshabilitada (evita bypass de MySQL)." -ForegroundColor Green
 } catch {
-    Write-Host "  [INFO] Fuente de archivo no presente o no modificable." -ForegroundColor Gray
+    Write-Host "  [ERROR] No se pudo deshabilitar la fuente de archivo: $_" -ForegroundColor Red
+    throw $_
 }
 
 # Limpiar cache de autorizacion en todos los nodos

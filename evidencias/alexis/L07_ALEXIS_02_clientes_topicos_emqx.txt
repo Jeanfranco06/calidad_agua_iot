@@ -1,0 +1,14 @@
+Fecha local: 2026-10-18 15:28:45 -05:00 Comando: docker exec emqx_broker emqx ctl clients list
+Client(ESP32_V3_INCIDENTE, username=esp32_nodes, peername=172.24.0.6:49909, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=2, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792347387547, connected_at=1792347387547)
+Client(ESP32_V1_BLOQUE_A, username=esp32_nodes, peername=172.24.0.6:50125, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792347387548, connected_at=1792347387549)
+Client(ESP32_FISICO_UNT, username=esp32_nodes, peername=172.24.0.6:53951, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=0, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792347387547, connected_at=1792347387548)
+Client(BACKEND_RULES_ENGINE, username=backend_rules, peername=172.24.0.6:42391, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=12137, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792347387580, connected_at=1792347387580)
+Client(ESP32_V2_BLOQUE_B, username=esp32_nodes, peername=172.24.0.6:46413, clean_start=true, keepalive=60, session_expiry_interval=0, subscriptions=1, inflight=0, awaiting_rel=0, delivered_msgs=1, enqueued_msgs=0, dropped_msgs=0, connected=true, created_at=1792347387547, connected_at=1792347387547)
+
+Comando: docker exec emqx_broker emqx ctl topics list
+
+cistern/ESP32_V3_INCIDENTE/commands -> emqx@node1.emqxnet
+cistern/ESP32_V1_BLOQUE_A/commands -> emqx@node1.emqxnet
+cistern/ESP32_V2_BLOQUE_B/commands -> emqx@node1.emqxnet
+cistern/ESP32_FISICO_UNT/commands -> emqx@node1.emqxnet
+cistern/+/telemetry -> emqx@node1.emqxnet

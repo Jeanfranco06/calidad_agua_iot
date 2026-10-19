@@ -1,0 +1,105 @@
+{
+  "responsable": "Vigo Huayán, Alexis Gean Gerardo",
+  "generated_at_utc": "2026-10-18T20:27:29Z",
+  "duration_seconds": 4.73,
+  "client_id": "alexis_integracion_3aa13b5680",
+  "username": "web_sub_daniel",
+  "transport": "MQTT 5 sobre WebSocket",
+  "broker": "ws://emqx_broker:8083/mqtt",
+  "subscription": "cistern/+/telemetry",
+  "connection_reason": [
+    "Success"
+  ],
+  "suback_codes": [
+    1
+  ],
+  "samples_by_node": {
+    "ESP32_V2_BLOQUE_B": 5,
+    "ESP32_FISICO_UNT": 1,
+    "ESP32_V1_BLOQUE_A": 1
+  },
+  "first_valid_sample_by_node": {
+    "ESP32_V2_BLOQUE_B": {
+      "topic": "cistern/ESP32_V2_BLOQUE_B/telemetry",
+      "qos": 1,
+      "payload": {
+        "device_id": "ESP32_V2_BLOQUE_B",
+        "location": "Cisterna_Secundaria_Bloque_B",
+        "timestamp": 1792355245,
+        "hardware_health": "OK",
+        "metrics": {
+          "turbidity_ntu": 317.33,
+          "temperature_c": 22.6,
+          "pin_voltage_v": 0.3
+        }
+      }
+    },
+    "ESP32_FISICO_UNT": {
+      "topic": "cistern/ESP32_FISICO_UNT/telemetry",
+      "qos": 1,
+      "payload": {
+        "device_id": "ESP32_FISICO_UNT",
+        "location": "Cisterna Comedor UNT",
+        "timestamp": 1792355245,
+        "hardware_health": "OK",
+        "metrics": {
+          "turbidity_ntu": 2.01,
+          "temperature_c": 21.86,
+          "pin_voltage_v": 2.989
+        }
+      }
+    },
+    "ESP32_V1_BLOQUE_A": {
+      "topic": "cistern/ESP32_V1_BLOQUE_A/telemetry",
+      "qos": 1,
+      "payload": {
+        "device_id": "ESP32_V1_BLOQUE_A",
+        "location": "Cisterna_Principal_Bloque_A",
+        "timestamp": 1792355247,
+        "hardware_health": "OK",
+        "metrics": {
+          "turbidity_ntu": 1.84,
+          "temperature_c": 20.76,
+          "pin_voltage_v": 3.011
+        }
+      }
+    }
+  },
+  "invalid_samples": [],
+  "mysql_before": {
+    "total": 12287,
+    "recent_by_node": {
+      "ESP32_FISICO_UNT": 12,
+      "ESP32_V1_BLOQUE_A": 20,
+      "ESP32_V2_BLOQUE_B": 60
+    },
+    "device_states": {
+      "ESP32_FISICO_UNT": "ACTIVO",
+      "ESP32_V1_BLOQUE_A": "ACTIVO",
+      "ESP32_V2_BLOQUE_B": "ACTIVO",
+      "ESP32_V3_INCIDENTE": "STANDBY"
+    }
+  },
+  "mysql_after": {
+    "total": 12294,
+    "recent_by_node": {
+      "ESP32_FISICO_UNT": 12,
+      "ESP32_V1_BLOQUE_A": 20,
+      "ESP32_V2_BLOQUE_B": 61
+    },
+    "device_states": {
+      "ESP32_FISICO_UNT": "ACTIVO",
+      "ESP32_V1_BLOQUE_A": "ACTIVO",
+      "ESP32_V2_BLOQUE_B": "ACTIVO",
+      "ESP32_V3_INCIDENTE": "STANDBY"
+    }
+  },
+  "checks": {
+    "websocket_mqtt5_autenticado": true,
+    "suscripcion_telemetria_concedida": true,
+    "contrato_json_valido": true,
+    "nodos_nominales_observados": true,
+    "telemetria_persistida_crece": true
+  },
+  "status": "APROBADA"
+}
