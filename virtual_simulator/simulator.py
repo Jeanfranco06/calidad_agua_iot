@@ -163,20 +163,34 @@ def run_backend_rules():
             metrics = raw_payload.get("metrics", {})
 
             adc_raw = metrics.get("adc_raw")
-            turb_calibrated = 1 if metrics.get("turbidity_calibrated", True) else 0
+            # Calibración: falso por defecto si no viene explícitamente como True
+            is_calibrated_flag = metrics.get("turbidity_calibrated", False)
+            turb_calibrated = 1 if is_calibrated_flag is True else 0
             origin = raw_payload.get("origin", "FISICO_REAL" if ("FISICO" in str(dev_id) or adc_raw is not None) else "VIRTUAL_DOCKER")
 
-            turb = metrics.get("turbidity_ntu")
             temp = metrics.get("temperature_c")
             volt = metrics.get("pin_voltage_v", metrics.get("sensor_voltage", 0.0))
 
-            # Si el nodo físico envía adc_raw y volt, pero no tiene calibración NTU de laboratorio:
-            # calculamos estimación teórica preliminar para satisfacer la restricción relacional
-            if (turb is None or turb <= 0.0) and volt > 0.1 and (origin == "PHYSICAL_REAL" or adc_raw is not None):
-                turb = round(max(0.1, (3.25 - volt) / 0.13), 2)
-                turb_calibrated = 0
+            # REQUISITO CIENTÍFICO CRÍTICO:
+            # Si el nodo NO está calibrado experimentalmente (turb_calibrated == 0),
+            # turbidez_ntu DEBE ser NULL para evitar interpretaciones falsas en modelos.
+            # La aproximación matemática se traslada exclusivamente a turbidez_estimada.
+            raw_turb_ntu = metrics.get("turbidity_ntu")
+            raw_turb_est = metrics.get("turbidity_estimated_ntu", metrics.get("turbidez_estimada"))
 
-            # Asegurar registro del dispositivo en el catálogo ciberfísico para evitar violación de FK
+            if turb_calibrated == 1:
+                turb_ntu = raw_turb_ntu
+                turb_est = raw_turb_est
+            else:
+                turb_ntu = None # NULL en MySQL para no contaminar análisis nefelométricos
+                if raw_turb_est is not None:
+                    turb_est = float(raw_turb_est)
+                elif volt > 0.1:
+                    turb_est = round(max(0.1, (3.25 - volt) / 0.13), 2)
+                else:
+                    turb_est = None
+
+            # Asegurar registro del dispositivo en el catálogo ciberfísico
             try:
                 sql_dev = """INSERT INTO dispositivos (id_dispositivo, nombre_identificador, ubicacion, tipo_nodo, estado_operativo)
                              VALUES (%s, %s, %s, %s, 'ACTIVO')
@@ -201,8 +215,8 @@ def run_backend_rules():
             elif volt is None or volt <= 0.0:
                 incident_reason = "Cortocircuito o lectura nula de voltaje en sensor"
                 is_virtual_incident = True
-            elif turb is None or turb <= 0.0:
-                incident_reason = "Lectura de turbidez no disponible o corrupta"
+            elif turb_calibrated == 1 and (turb_ntu is None or turb_ntu <= 0.0):
+                incident_reason = "Lectura de turbidez calibrada corrupta o nula"
                 is_virtual_incident = True
 
             if is_virtual_incident:
@@ -228,18 +242,20 @@ def run_backend_rules():
                 db_conn.commit()
                 return
 
-            # 2. PERSISTENCIA SEGURA (Solo telemetría limpia y validada)
-            alert_flag = "ALERTA" if turb >= 5.0 else ("PRECAUCION" if turb >= 4.0 else "NORMAL")
+            # 2. PERSISTENCIA SEGURA Y RIGOR CIENTÍFICO
+            eval_val = turb_ntu if turb_ntu is not None else (turb_est if turb_est is not None else 0.0)
+            alert_flag = "ALERTA" if eval_val >= 5.0 else ("PRECAUCION" if eval_val >= 4.0 else "NORMAL")
             try:
-                sql_insert_ext = """INSERT INTO telemetria (id_dispositivo, temperatura, turbidez_ntu, voltaje_sensor, estado_alerta, adc_raw, turbidez_calibrada, procedencia)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
-                db_cursor.execute(sql_insert_ext, (dev_id, temp, turb, volt, alert_flag, adc_raw, turb_calibrated, origin))
+                sql_insert_ext = """INSERT INTO telemetria 
+                                    (id_dispositivo, temperatura, turbidez_ntu, turbidez_estimada, voltaje_sensor, estado_alerta, adc_raw, turbidez_calibrada, procedencia)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                db_cursor.execute(sql_insert_ext, (dev_id, temp, turb_ntu, turb_est, volt, alert_flag, adc_raw, turb_calibrated, origin))
             except mysql.connector.Error:
                 sql_insert = """INSERT INTO telemetria (id_dispositivo, temperatura, turbidez_ntu, voltaje_sensor, estado_alerta)
                                 VALUES (%s, %s, %s, %s, %s)"""
-                db_cursor.execute(sql_insert, (dev_id, temp, turb, volt, alert_flag))
+                db_cursor.execute(sql_insert, (dev_id, temp, turb_ntu, volt, alert_flag))
             db_conn.commit()
-            print(f"[TELEMETRÍA PERSISTIDA] ({dev_id} | {origin}) Turb={turb} NTU (Calib={turb_calibrated}), Temp={temp}°C, Volt={volt}V, ADC={adc_raw} -> Estado: {alert_flag}", flush=True)
+            print(f"[TELEMETRÍA PERSISTIDA] ({dev_id} | {origin}) NTU_Validada={turb_ntu}, NTU_Estimada={turb_est}, Calib={turb_calibrated}, Temp={temp}°C, Volt={volt}V, ADC={adc_raw} -> Estado: {alert_flag}", flush=True)
 
             # 3. COMPORTAMIENTO AUTÓNOMO BIDIRECCIONAL (Respuesta Analítica)
             if turb >= 4.0 and dev_id not in boosted_nodes:

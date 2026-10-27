@@ -125,22 +125,38 @@ void publishTelemetry() {
     SensorData sensors = readSensors();
     unsigned long epoch = getUnixEpoch();
 
-    // Construcción del payload JSON compatible con el contrato backend
-    // metrics incluye campos nominales (turbidity_ntu, temperature_c, pin_voltage_v)
-    // y metadatos de telemetría física (adc_raw, turbidity_calibrated, etc.)
+    bool ntpSynced = isNtpSynced();
+    char tempStr[16];
+    if (sensors.temp_valid) {
+        snprintf(tempStr, sizeof(tempStr), "%.2f", sensors.temperature_c);
+    } else {
+        snprintf(tempStr, sizeof(tempStr), "null");
+    }
+
+    char epochStr[24];
+    if (ntpSynced) {
+        snprintf(epochStr, sizeof(epochStr), "%lu", epoch);
+    } else {
+        snprintf(epochStr, sizeof(epochStr), "null");
+    }
+
+    // Construcción del payload JSON con rigor científico:
+    // turbidity_ntu es estrictamente NULL al no contar con curva nefelométrica certificada.
+    // La estimación teórica del modelo físico se transmite como turbidity_estimated_ntu.
     char jsonBuffer[512];
     snprintf(jsonBuffer, sizeof(jsonBuffer),
         "{"
           "\"device_id\":\"%s\","
           "\"location\":\"%s\","
-          "\"timestamp\":%lu,"
+          "\"timestamp\":%s,"
+          "\"timestamp_synced\":%s,"
           "\"hardware_health\":\"%s\","
           "\"origin\":\"%s\","
           "\"metrics\":{"
-            "\"turbidity_ntu\":%.2f,"
+            "\"turbidity_ntu\":null,"
             "\"turbidity_estimated_ntu\":%.2f,"
-            "\"turbidity_calibrated\":%s,"
-            "\"temperature_c\":%.2f,"
+            "\"turbidity_calibrated\":false,"
+            "\"temperature_c\":%s,"
             "\"pin_voltage_v\":%.3f,"
             "\"sensor_voltage_v\":%.3f,"
             "\"adc_raw\":%d"
@@ -148,13 +164,12 @@ void publishTelemetry() {
         "}",
         DEVICE_ID,
         DEVICE_LOCATION,
-        epoch,
+        epochStr,
+        ntpSynced ? "true" : "false",
         sensors.hardware_health,
         NODE_ORIGIN,
         sensors.turbidity_estimated_ntu,
-        sensors.turbidity_estimated_ntu,
-        sensors.turbidity_calibrated ? "true" : "false",
-        sensors.temperature_c,
+        tempStr,
         sensors.pin_voltage_v,
         sensors.sensor_voltage_v,
         sensors.raw_adc
@@ -164,9 +179,9 @@ void publishTelemetry() {
 
     if (ok) {
         Serial.printf("[TELEMETRÍA TX] -> Topico: %s\n", TOPIC_TELEMETRY);
-        Serial.printf("  ADC: %d | V_pin: %.3f V | V_sensor: %.3f V | Temp: %.2f °C | Est. NTU: %.2f (No calibrado) | Salud: %s\n",
+        Serial.printf("  ADC: %d | V_pin: %.3f V | V_sensor: %.3f V | Temp: %s °C | Est. NTU: %.2f (No calibrado) | Salud: %s | NTP: %s\n",
                       sensors.raw_adc, sensors.pin_voltage_v, sensors.sensor_voltage_v,
-                      sensors.temperature_c, sensors.turbidity_estimated_ntu, sensors.hardware_health);
+                      tempStr, sensors.turbidity_estimated_ntu, sensors.hardware_health, ntpSynced ? "SYNC" : "OFFLINE");
     } else {
         Serial.printf("[TELEMETRÍA ERROR] Fallo al publicar payload (tamano: %d bytes)\n", strlen(jsonBuffer));
     }
