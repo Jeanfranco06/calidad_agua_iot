@@ -169,7 +169,11 @@ def run_backend_rules():
             # Calibración: falso por defecto si no viene explícitamente como True
             is_calibrated_flag = metrics.get("turbidity_calibrated", False)
             turb_calibrated = 1 if is_calibrated_flag is True else 0
-            origin = raw_payload.get("origin", "FISICO_REAL" if ("FISICO" in str(dev_id) or adc_raw is not None) else "VIRTUAL_DOCKER")
+            origin_raw = raw_payload.get("origin", "")
+            if "PHYSICAL" in str(origin_raw).upper() or "FISICO" in str(origin_raw).upper() or "FISICO" in str(dev_id).upper() or adc_raw is not None:
+                origin = "FISICO_REAL"
+            else:
+                origin = "VIRTUAL_DOCKER"
 
             temp = metrics.get("temperature_c")
             volt = metrics.get("pin_voltage_v", metrics.get("sensor_voltage", 0.0))
@@ -198,7 +202,7 @@ def run_backend_rules():
                 sql_dev = """INSERT INTO dispositivos (id_dispositivo, nombre_identificador, ubicacion, tipo_nodo, estado_operativo)
                              VALUES (%s, %s, %s, %s, 'ACTIVO')
                              ON DUPLICATE KEY UPDATE estado_operativo = 'ACTIVO'"""
-                dev_name = f"Sensor Cisterna Hogar ({dev_id})" if origin == "PHYSICAL_REAL" else f"Nodo {dev_id}"
+                dev_name = f"Sensor Cisterna Hogar ({dev_id})" if origin == "FISICO_REAL" else f"Nodo {dev_id}"
                 db_cursor.execute(sql_dev, (dev_id, dev_name, "Cisterna Hogar", origin))
                 db_conn.commit()
             except Exception as dev_err:
@@ -211,16 +215,18 @@ def run_backend_rules():
             incident_reason = ""
             if temp is None or temp < 0.0 or temp > 60.0:
                 incident_reason = "Sonda de temperatura desconectada o fuera de rango [0-60°C]"
-                if origin != "PHYSICAL_REAL":
+                if origin != "FISICO_REAL":
                     is_virtual_incident = True
                 else:
                     temp = 25.0 # Fallback preventivo para preservar la serie temporal del agua
             elif volt is None or volt <= 0.0:
                 incident_reason = "Cortocircuito o lectura nula de voltaje en sensor"
-                is_virtual_incident = True
+                if origin != "FISICO_REAL":
+                    is_virtual_incident = True
             elif turb_calibrated == 1 and (turb_ntu is None or turb_ntu <= 0.0):
                 incident_reason = "Lectura de turbidez calibrada corrupta o nula"
-                is_virtual_incident = True
+                if origin != "FISICO_REAL":
+                    is_virtual_incident = True
 
             if is_virtual_incident:
                 print(f"[REGLA OFFLINE] Incidente virtual en {dev_id}. {incident_reason}. Metrics: {metrics}. Se descarta inserción.", flush=True)
@@ -261,7 +267,7 @@ def run_backend_rules():
             print(f"[TELEMETRÍA PERSISTIDA] ({dev_id} | {origin}) NTU_Validada={turb_ntu}, NTU_Estimada={turb_est}, Calib={turb_calibrated}, Temp={temp}°C, Volt={volt}V, ADC={adc_raw} -> Estado: {alert_flag}", flush=True)
 
             # 3. COMPORTAMIENTO AUTÓNOMO BIDIRECCIONAL (Respuesta Analítica)
-            if turb >= 4.0 and dev_id not in boosted_nodes:
+            if eval_val >= 4.0 and dev_id not in boosted_nodes:
                 boosted_nodes.add(dev_id)
                 cmd_topic = f"cistern/{dev_id}/commands"
                 boost_order = {
@@ -285,7 +291,15 @@ def run_backend_rules():
         except Exception as ex:
             print(f"Error procesando mensaje entrante: {ex}", flush=True)
 
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            client.subscribe("cistern/+/telemetry", qos=1)
+            print("[BACKEND] Suscrito exitosamente a 'cistern/+/telemetry' tras (re)conexión MQTT.", flush=True)
+        else:
+            print(f"[BACKEND] Error al conectar con broker MQTT. Código: {rc}", flush=True)
+
     backend_client = mqtt.Client(client_id="BACKEND_RULES_ENGINE")
+    backend_client.on_connect = on_connect
     backend_client.on_message = on_telemetry_received
 
     connected = False
@@ -296,7 +310,6 @@ def run_backend_rules():
         except Exception:
             time.sleep(2)
 
-    backend_client.subscribe("cistern/+/telemetry", qos=1)
     print("Motor de Reglas Offline iniciado y escuchando telemetría en 'cistern/+/telemetry'...", flush=True)
     backend_client.loop_forever()
 
