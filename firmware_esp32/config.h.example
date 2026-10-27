@@ -25,7 +25,7 @@
 
 // 3. Catálogo Ciberfísico y Tópicos
 #define DEVICE_ID             "ESP32_FISICO_UNT"
-#define DEVICE_LOCATION       "Cisterna Comedor UNT"
+#define DEVICE_LOCATION       "Cisterna Hogar"
 #define NODE_ORIGIN           "PHYSICAL_REAL"
 
 #define TOPIC_TELEMETRY       "cistern/ESP32_FISICO_UNT/telemetry"

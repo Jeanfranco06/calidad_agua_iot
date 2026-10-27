@@ -51,10 +51,12 @@ void onMqttCommandReceived(char* topic, byte* payload, unsigned int length) {
     // Detección de órdenes de acción ("STANDBY", "RESUME", "INTENSIVE_SAMPLING")
     if (strstr(message, "\"STANDBY\"")) {
         nodeInStandby = true;
-        Serial.println("[CONTROL] Nodo puesto en modo STANDBY por directiva del servidor.");
+        currentIntervalSec = 10; // Modo reposo / diagnóstico a 10s en vez de apagar
+        Serial.println("[CONTROL] Directiva STANDBY recibida. Ajustando a modo reposo y diagnóstico (10 s).");
     } else if (strstr(message, "\"RESUME\"")) {
         nodeInStandby = false;
-        Serial.println("[CONTROL] Nodo REACTIVADO desde STANDBY.");
+        currentIntervalSec = DEFAULT_INTERVAL_SEC;
+        Serial.println("[CONTROL] Nodo REACTIVADO a régimen nominal de muestreo.");
     }
 }
 
@@ -178,8 +180,8 @@ void setup() {
     delay(1500);
 
     Serial.println("\n========================================================");
-    Serial.println("   SISTEMA IOT DE CALIDAD DE AGUA - NODO FÍSICO ESP32    ");
-    Serial.println("   Universidad Nacional de Trujillo                      ");
+    Serial.println("   SISTEMA IOT DE CALIDAD DE AGUA - TANQUE RESIDENCIAL   ");
+    Serial.println("   Monitoreo Ciberfisico en Tiempo Real (ESP32)          ");
     Serial.println("========================================================");
 
     // Inicialización de hardware y sensores
@@ -212,11 +214,6 @@ void loop() {
     unsigned long now = millis();
     if (now - lastTelemetryMillis >= (unsigned long)(currentIntervalSec * 1000)) {
         lastTelemetryMillis = now;
-
-        if (nodeInStandby) {
-            Serial.println("[ESTADO] Nodo en reposo (STANDBY). Omitiendo transmision.");
-        } else {
-            publishTelemetry();
-        }
+        publishTelemetry();
     }
 }

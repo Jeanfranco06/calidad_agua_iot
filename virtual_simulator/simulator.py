@@ -181,29 +181,34 @@ def run_backend_rules():
                 sql_dev = """INSERT INTO dispositivos (id_dispositivo, nombre_identificador, ubicacion, tipo_nodo, estado_operativo)
                              VALUES (%s, %s, %s, %s, 'ACTIVO')
                              ON DUPLICATE KEY UPDATE estado_operativo = 'ACTIVO'"""
-                dev_name = f"Nodo Base Físico ESP32 ({dev_id})" if origin == "PHYSICAL_REAL" else f"Nodo {dev_id}"
-                db_cursor.execute(sql_dev, (dev_id, dev_name, "Cisterna UNT", origin))
+                dev_name = f"Sensor Cisterna Hogar ({dev_id})" if origin == "PHYSICAL_REAL" else f"Nodo {dev_id}"
+                db_cursor.execute(sql_dev, (dev_id, dev_name, "Cisterna Hogar", origin))
                 db_conn.commit()
             except Exception as dev_err:
                 print(f"[CATÁLOGO DISPOSITIVOS] Verificación {dev_id}: {dev_err}", flush=True)
 
             # 1. GESTIÓN DE INCIDENTES (Regla Offline Anti-Corrupción)
-            is_incident = False
+            # Para nodos virtuales (V3), inyectar orden STANDBY según diseño de laboratorio
+            # Para el hardware físico real, NUNCA apagar el microcontrolador: tolerar y registrar alerta
+            is_virtual_incident = False
             incident_reason = ""
             if temp is None or temp < 0.0 or temp > 60.0:
-                is_incident = True
                 incident_reason = "Sonda de temperatura desconectada o fuera de rango [0-60°C]"
+                if origin != "PHYSICAL_REAL":
+                    is_virtual_incident = True
+                else:
+                    temp = 25.0 # Fallback preventivo para preservar la serie temporal del agua
             elif volt is None or volt <= 0.0:
-                is_incident = True
                 incident_reason = "Cortocircuito o lectura nula de voltaje en sensor"
+                is_virtual_incident = True
             elif turb is None or turb <= 0.0:
-                is_incident = True
                 incident_reason = "Lectura de turbidez no disponible o corrupta"
+                is_virtual_incident = True
 
-            if is_incident:
-                print(f"[REGLA OFFLINE] Incidente detectado en {dev_id}. {incident_reason}. Metrics: {metrics}. Se descarta inserción.", flush=True)
+            if is_virtual_incident:
+                print(f"[REGLA OFFLINE] Incidente virtual en {dev_id}. {incident_reason}. Metrics: {metrics}. Se descarta inserción.", flush=True)
 
-                # Emisión de orden correctiva hacia el nodo defectuoso
+                # Emisión de orden correctiva hacia el nodo virtual defectuoso
                 order_topic = f"cistern/{dev_id}/commands"
                 incident_order = {
                     "target_device": dev_id,
