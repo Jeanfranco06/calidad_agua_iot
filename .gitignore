@@ -1,0 +1,23 @@
+# Entornos virtuales y Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+
+# Logs y volcados temporales
+*.log
+*.err
+compose_up.*
+
+# Credenciales y configuraciones sensibles del ESP32
+firmware_esp32/config.h
+!firmware_esp32/config.h.example
+
+# IDEs y compilaciones temporales de Arduino / VS Code
+.vscode/
+build/
+*.bin
+*.hex
+*.elf

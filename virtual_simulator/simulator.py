@@ -162,13 +162,46 @@ def run_backend_rules():
             dev_id = raw_payload.get("device_id")
             metrics = raw_payload.get("metrics", {})
 
+            adc_raw = metrics.get("adc_raw")
+            turb_calibrated = 1 if metrics.get("turbidity_calibrated", True) else 0
+            origin = raw_payload.get("origin", "FISICO_REAL" if ("FISICO" in str(dev_id) or adc_raw is not None) else "VIRTUAL_DOCKER")
+
             turb = metrics.get("turbidity_ntu")
             temp = metrics.get("temperature_c")
             volt = metrics.get("pin_voltage_v", metrics.get("sensor_voltage", 0.0))
 
+            # Si el nodo físico envía adc_raw y volt, pero no tiene calibración NTU de laboratorio:
+            # calculamos estimación teórica preliminar para satisfacer la restricción relacional
+            if (turb is None or turb <= 0.0) and volt > 0.1 and (origin == "PHYSICAL_REAL" or adc_raw is not None):
+                turb = round(max(0.1, (3.25 - volt) / 0.13), 2)
+                turb_calibrated = 0
+
+            # Asegurar registro del dispositivo en el catálogo ciberfísico para evitar violación de FK
+            try:
+                sql_dev = """INSERT INTO dispositivos (id_dispositivo, nombre_identificador, ubicacion, tipo_nodo, estado_operativo)
+                             VALUES (%s, %s, %s, %s, 'ACTIVO')
+                             ON DUPLICATE KEY UPDATE estado_operativo = 'ACTIVO'"""
+                dev_name = f"Nodo Base Físico ESP32 ({dev_id})" if origin == "PHYSICAL_REAL" else f"Nodo {dev_id}"
+                db_cursor.execute(sql_dev, (dev_id, dev_name, "Cisterna UNT", origin))
+                db_conn.commit()
+            except Exception as dev_err:
+                print(f"[CATÁLOGO DISPOSITIVOS] Verificación {dev_id}: {dev_err}", flush=True)
+
             # 1. GESTIÓN DE INCIDENTES (Regla Offline Anti-Corrupción)
-            if turb is None or turb <= 0.0 or temp is None or temp < 0.0 or temp > 60.0:
-                print(f"[REGLA OFFLINE] Incidente detectado en {dev_id}. Lectura inválida: {metrics}. Se descarta la inserción.", flush=True)
+            is_incident = False
+            incident_reason = ""
+            if temp is None or temp < 0.0 or temp > 60.0:
+                is_incident = True
+                incident_reason = "Sonda de temperatura desconectada o fuera de rango [0-60°C]"
+            elif volt is None or volt <= 0.0:
+                is_incident = True
+                incident_reason = "Cortocircuito o lectura nula de voltaje en sensor"
+            elif turb is None or turb <= 0.0:
+                is_incident = True
+                incident_reason = "Lectura de turbidez no disponible o corrupta"
+
+            if is_incident:
+                print(f"[REGLA OFFLINE] Incidente detectado en {dev_id}. {incident_reason}. Metrics: {metrics}. Se descarta inserción.", flush=True)
 
                 # Emisión de orden correctiva hacia el nodo defectuoso
                 order_topic = f"cistern/{dev_id}/commands"
@@ -182,7 +215,7 @@ def run_backend_rules():
                 # Registrar evento en la bitácora de auditoría
                 sql_log = """INSERT INTO bitacora_ordenes_mqtt (id_dispositivo, orden_enviada, motivo)
                              VALUES (%s, %s, %s)"""
-                db_cursor.execute(sql_log, (dev_id, "STANDBY", "Falla fisica: Sensor desconectado o cortocircuito"))
+                db_cursor.execute(sql_log, (dev_id, "STANDBY", f"Falla fisica: {incident_reason}"))
                 
                 # Actualizar estado de dispositivo en catálogo
                 sql_upd = "UPDATE dispositivos SET estado_operativo = 'STANDBY' WHERE id_dispositivo = %s"
@@ -192,11 +225,16 @@ def run_backend_rules():
 
             # 2. PERSISTENCIA SEGURA (Solo telemetría limpia y validada)
             alert_flag = "ALERTA" if turb >= 5.0 else ("PRECAUCION" if turb >= 4.0 else "NORMAL")
-            sql_insert = """INSERT INTO telemetria (id_dispositivo, temperatura, turbidez_ntu, voltaje_sensor, estado_alerta)
-                            VALUES (%s, %s, %s, %s, %s)"""
-            db_cursor.execute(sql_insert, (dev_id, temp, turb, volt, alert_flag))
+            try:
+                sql_insert_ext = """INSERT INTO telemetria (id_dispositivo, temperatura, turbidez_ntu, voltaje_sensor, estado_alerta, adc_raw, turbidez_calibrada, procedencia)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+                db_cursor.execute(sql_insert_ext, (dev_id, temp, turb, volt, alert_flag, adc_raw, turb_calibrated, origin))
+            except mysql.connector.Error:
+                sql_insert = """INSERT INTO telemetria (id_dispositivo, temperatura, turbidez_ntu, voltaje_sensor, estado_alerta)
+                                VALUES (%s, %s, %s, %s, %s)"""
+                db_cursor.execute(sql_insert, (dev_id, temp, turb, volt, alert_flag))
             db_conn.commit()
-            print(f"[TELEMETRÍA PERSISTIDA] ({dev_id}) Turbidez={turb} NTU, Temp={temp}°C, Volt={volt}V -> Estado: {alert_flag}", flush=True)
+            print(f"[TELEMETRÍA PERSISTIDA] ({dev_id} | {origin}) Turb={turb} NTU (Calib={turb_calibrated}), Temp={temp}°C, Volt={volt}V, ADC={adc_raw} -> Estado: {alert_flag}", flush=True)
 
             # 3. COMPORTAMIENTO AUTÓNOMO BIDIRECCIONAL (Respuesta Analítica)
             if turb >= 4.0 and dev_id not in boosted_nodes:
@@ -241,9 +279,20 @@ def run_backend_rules():
 if __name__ == "__main__":
     print("Iniciando contenedor de virtualización y backend de IoT...", flush=True)
 
-    # Iniciar Nodos de Telemetría (ESP32 Físico y Nodos Virtuales V1, V2, V3)
-    threads = []
+    # Control de simulación del nodo físico:
+    # Por defecto FALSE cuando se integra hardware real, evitando colisiones de Client ID en EMQX
+    simulate_physical = os.getenv("SIMULATE_PHYSICAL_NODE", "false").strip().lower() in ("true", "1", "yes")
+
+    nodes_to_run = []
     for node_cfg in CONFIG_NODES:
+        if node_cfg["device_id"] == "ESP32_FISICO_UNT" and not simulate_physical:
+            print("[SIMULADOR] Simulación de 'ESP32_FISICO_UNT' DESACTIVADA para permitir conexión de hardware físico real.", flush=True)
+            continue
+        nodes_to_run.append(node_cfg)
+
+    # Iniciar Nodos de Telemetría
+    threads = []
+    for node_cfg in nodes_to_run:
         t = Thread(target=run_simulated_node, args=(node_cfg,))
         t.daemon = True
         t.start()

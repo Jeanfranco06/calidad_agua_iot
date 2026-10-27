@@ -73,5 +73,6 @@ services:
       - DB_USER=emqx_user
       - DB_PASSWORD=emqx_pass
       - DB_NAME=emqx_db
+      - SIMULATE_PHYSICAL_NODE=false  # True para simular nodo fisico si no hay hardware; False para conectar ESP32 real
     networks:
       - emqxnet
