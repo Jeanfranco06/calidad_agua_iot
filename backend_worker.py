@@ -18,6 +18,9 @@ def connect_database():
     while True:
         try:
             conn = mysql.connector.connect(**DB_SETTINGS)
+            cur = conn.cursor()
+            cur.execute("SET time_zone = '-05:00';")
+            cur.close()
             return conn
         except Exception:
             time.sleep(2)

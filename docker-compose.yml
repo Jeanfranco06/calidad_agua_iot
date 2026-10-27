@@ -28,7 +28,9 @@ services:
     image: mysql:8.0
     container_name: mysql_server
     restart: always
+    command: --default-time-zone='-05:00'
     environment:
+      TZ: America/Lima
       MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: emqx_db
       MYSQL_USER: emqx_user
@@ -47,6 +49,7 @@ services:
     container_name: phpmyadmin_gui
     restart: always
     environment:
+      TZ: America/Lima
       PMA_HOST: mysql
       PMA_USER: emqx_user
       PMA_PASSWORD: emqx_pass
@@ -67,6 +70,7 @@ services:
       - emqx
       - mysql
     environment:
+      - TZ=America/Lima
       - BROKER_HOST=emqx_broker
       - BROKER_PORT=1883
       - DB_HOST=mysql_server
