@@ -81,7 +81,7 @@ Define las reglas de permiso para las operaciones de publicación y suscripción
 
 ## 5. Matriz de Identidades y Reglas de Mínimo Privilegio
 
-Se definieron 4 identidades operativas sin otorgar superusuarios (`is_superuser = 0` en todas):
+Se definieron 5 identidades operativas sin otorgar superusuarios (`is_superuser = 0` en todas):
 
 | Identidad / Usuario | Rol en la Arquitectura | Tópicos Autorizados | Acciones Permitidas | Justificación Técnica |
 |---|---|---|---|---|
@@ -89,6 +89,7 @@ Se definieron 4 identidades operativas sin otorgar superusuarios (`is_superuser 
 | **`web_sub_daniel`** | Suscriptor Web (Lab 07) | `cistern/lab07/prueba`<br>`cistern/+/telemetry` | `subscribe` (allow)<br>`subscribe` (allow) | Monitoreo pasivo: puede inspeccionar la telemetría y pruebas sin capacidad de emitir datos. |
 | **`esp32_nodes`** | Nodos Sensores Simulados | `cistern/+/telemetry`<br>`cistern/+/commands` | `publish` (allow)<br>`subscribe` (allow) | **Alcance documentado:** Los 4 nodos (`ESP32_FISICO_UNT`, `ESP32_V1_BLOQUE_A`, `ESP32_V2_BLOQUE_B` y `ESP32_V3_INCIDENTE`) comparten esta cuenta en el contenedor para emisión de telemetría y recepción de órdenes. |
 | **`backend_rules`** | Motor de Reglas Offline | `cistern/+/telemetry`<br>`cistern/+/commands` | `subscribe` (allow)<br>`publish` (allow) | Procesamiento reactivo: ingesta de telemetría y despacho de comandos de control (`STANDBY`, `INTENSIVE_SAMPLING`). |
+| **`mobile_monitor`** | Panel móvil (Lab 11) | `cistern/+/telemetry` | `subscribe` (allow) | Lectura pasiva de sensores; sin publicación ni acceso a órdenes. |
 | **`$all`** | Regla Global de Cierre | `#` | `all` (deny) | **Default Deny:** Cualquier operación sobre tópicos no contemplados explícitamente es rechazada. |
 
 ---
@@ -121,7 +122,7 @@ El aprovisionamiento de la base de datos se gestiona mediante el script automati
 
 - **Manejo Seguro de Secretos:** Las contraseñas en texto plano se generan localmente con entropía criptográfica y se almacenan exclusivamente en `.env` (ignorado por Git).
 - **Higiene de Archivos Versionables:** Ningún archivo rastreado por el repositorio contiene contraseñas reales ni valores predeterminados reutilizables.
-- **Idempotencia Garantizada:** Claves únicas `uq_mqtt_user_username` y `uq_acl_rule` con cláusulas `ON DUPLICATE KEY UPDATE` aseguran exactamente **4 usuarios** y **8 reglas ACL**.
+- **Idempotencia Garantizada:** Claves únicas `uq_mqtt_user_username` y `uq_acl_rule` con cláusulas `ON DUPLICATE KEY UPDATE` aseguran exactamente **5 usuarios** y **9 reglas ACL**.
 
 ---
 

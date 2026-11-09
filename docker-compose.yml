@@ -15,11 +15,11 @@ services:
     image: emqx/emqx:5.8.0
     container_name: emqx_broker
     hostname: node1.emqxnet
-    restart: always
+    restart: "no"
     ports:
-      - "1883:1883"      # Tráfico estándar MQTT M2M
-      - "8083:8083"      # MQTT sobre WebSockets (para frontend React)
-      - "18083:18083"    # Consola Web de Administración EMQX
+      - "1884:1883"      # Tráfico estándar MQTT M2M
+      - "8084:8083"      # MQTT sobre WebSockets (para frontend React)
+      - "18084:18083"    # Consola Web de Administración EMQX
     environment:
       - EMQX_NODE_NAME=emqx@node1.emqxnet
       - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
@@ -33,7 +33,7 @@ services:
   mysql:
     image: mysql:8.0
     container_name: mysql_server
-    restart: always
+    restart: "no"
     command: --default-time-zone='-05:00'
     environment:
       TZ: America/Lima
@@ -46,6 +46,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./bd_relacional.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./migration_esp32_fisico.sql:/docker-entrypoint-initdb.d/zz-migration_esp32_fisico.sql:ro
     networks:
       - emqxnet
 
@@ -53,7 +54,7 @@ services:
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     container_name: phpmyadmin_gui
-    restart: always
+    restart: "no"
     environment:
       TZ: America/Lima
       PMA_HOST: mysql
@@ -71,7 +72,7 @@ services:
     build:
       context: ./virtual_simulator
     container_name: iot_virtual_nodes
-    restart: always
+    restart: "no"
     depends_on:
       - emqx
       - mysql
@@ -100,5 +101,17 @@ services:
       - "8085:80"
     volumes:
       - ./lab07/03_Daniel_Clientes_Web:/usr/share/nginx/html:ro
+    networks:
+      - emqxnet
+
+  # Cliente MQTT móvil (web responsive) sobre WebSockets
+  mobile_app:
+    image: nginx:1.27-alpine
+    container_name: water_mobile_app
+    restart: unless-stopped
+    ports:
+      - "8086:80"
+    volumes:
+      - ./mobile:/usr/share/nginx/html:ro
     networks:
       - emqxnet

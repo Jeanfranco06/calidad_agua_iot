@@ -119,3 +119,11 @@ Estimado Jeanfranco, la infraestructura inicial ha sido desplegada, auditada y c
   }
   ```
 * **phpMyAdmin (Inspección de BD):** `http://localhost:8080` (Base de datos: `emqx_db`).
+
+## Puertos locales alternativos
+
+Para evitar conflictos con otro broker MQTT activo en el equipo, la configuración actual publica:
+
+* **MQTT TCP:** `localhost:1884`
+* **MQTT WebSocket:** `ws://localhost:8084/mqtt`
+* **Dashboard EMQX:** `http://localhost:18084`

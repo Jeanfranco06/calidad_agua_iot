@@ -149,6 +149,7 @@ def run_simulated_node(profile):
             "hardware_health": hw_status,
             "metrics": {
                 "turbidity_ntu": turb_value,
+                "turbidity_calibrated": True,
                 "temperature_c": temp_value,
                 "pin_voltage_v": sensor_voltage
             }

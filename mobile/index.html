@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071b2d">
+  <meta name="description" content="Monitoreo en tiempo real de la calidad del agua por MQTT">
+  <title>Agua Clara · Monitoreo</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/mqtt.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Agua Clara, inicio">
+        <span class="brand-mark" aria-hidden="true">≈</span>
+        <span><strong>AGUA CLARA</strong><small>MONITOREO DE CISTERNAS</small></span>
+      </a>
+      <div class="connection" id="connectionBadge" data-state="offline" role="status" aria-live="polite">
+        <span class="connection-dot"></span><span id="connectionText">Desconectado</span>
+      </div>
+    </header>
+
+    <section class="intro">
+      <div>
+        <p class="eyebrow">SISTEMA DE AGUA · EN VIVO</p>
+        <h1>Calidad del agua</h1>
+        <p class="lede">Lecturas recientes de tus dispositivos conectados.</p>
+      </div>
+      <div class="live-pill"><span></span> MQTT EN TIEMPO REAL</div>
+    </section>
+
+    <section class="panel connection-panel" aria-labelledby="setupTitle">
+      <div class="panel-heading">
+        <div><p class="eyebrow">ACCESO CON CUENTA MQTT</p><h2 id="setupTitle">Conectar al broker</h2></div>
+        <button class="text-button" id="settingsToggle" type="button" aria-expanded="true">Ocultar</button>
+      </div>
+      <div id="connectionSettings">
+        <div class="form-grid">
+          <label class="field field-wide">Broker WebSocket
+            <input id="brokerUrl" type="url" autocomplete="url" spellcheck="false">
+          </label>
+          <label class="field">Usuario MQTT
+            <input id="username" value="mobile_monitor" autocomplete="username" spellcheck="false">
+          </label>
+          <label class="field">Contraseña MQTT
+            <input id="password" type="password" autocomplete="current-password">
+          </label>
+        </div>
+        <div class="actions">
+          <button class="button primary" id="connectButton" type="button">Conectar</button>
+          <button class="button secondary" id="disconnectButton" type="button" disabled>Desconectar</button>
+          <span class="topic-note">Suscripción: <code>cistern/+/telemetry</code></span>
+        </div>
+        <p class="transport-note" id="transportNote">Conexión local por WebSocket. No se guardan las credenciales en el dispositivo.</p>
+      </div>
+    </section>
+
+    <section class="summary-row" aria-label="Resumen">
+      <article class="summary-card"><span class="summary-icon aqua">⌁</span><div><span class="summary-label">Dispositivos recibidos</span><strong id="deviceCount">0</strong></div></article>
+      <article class="summary-card"><span class="summary-icon mint">◷</span><div><span class="summary-label">Última actualización</span><strong id="lastUpdate">Sin lecturas</strong></div></article>
+    </section>
+
+    <section class="devices-section" aria-labelledby="devicesTitle">
+      <div class="section-heading">
+        <div><p class="eyebrow">LECTURAS POR SENSOR</p><h2 id="devicesTitle">Dispositivos</h2></div>
+        <span class="device-total" id="deviceTotal">0 equipos</span>
+      </div>
+      <div id="emptyState" class="empty-state">
+        <div class="empty-art" aria-hidden="true"><span>⌁</span></div>
+        <h3>Esperando lecturas</h3>
+        <p>Conéctate al broker para ver la temperatura y la turbidez de cada dispositivo.</p>
+      </div>
+      <div id="deviceGrid" class="device-grid" aria-live="polite"></div>
+    </section>
+
+    <footer><span>Calidad de agua · Laboratorio 11 MQTT Mobile</span><span>Zona horaria: America/Lima</span></footer>
+  </main>
+</body>
+</html>

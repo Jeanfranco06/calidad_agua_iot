@@ -66,7 +66,8 @@ function Update-EnvFileSafely {
         "MQTT_PASS_PUB",
         "MQTT_PASS_SUB",
         "MQTT_PASS_NODES",
-        "MQTT_PASS_BACKEND"
+        "MQTT_PASS_BACKEND",
+        "MQTT_PASS_MOBILE"
     )
 
     $defaultConfig = [ordered]@{
@@ -78,6 +79,7 @@ function Update-EnvFileSafely {
         "MQTT_USER_SUB" = "web_sub_daniel"
         "MQTT_USER_NODES" = "esp32_nodes"
         "MQTT_USER_BACKEND" = "backend_rules"
+        "MQTT_USER_MOBILE" = "mobile_monitor"
     }
 
     $rawLines = @()
@@ -198,6 +200,9 @@ function Update-EnvFileSafely {
         $finalLines += ""
         $finalLines += "MQTT_USER_BACKEND=$($newMap['MQTT_USER_BACKEND'])"
         $finalLines += "MQTT_PASS_BACKEND=$($newMap['MQTT_PASS_BACKEND'])"
+        $finalLines += ""
+        $finalLines += "MQTT_USER_MOBILE=$($newMap['MQTT_USER_MOBILE'])"
+        $finalLines += "MQTT_PASS_MOBILE=$($newMap['MQTT_PASS_MOBILE'])"
         $modified = $true
     }
 
@@ -269,19 +274,20 @@ $usersToSync = @(
     @{ User = "web_pub_daniel"; Pass = $envMap["MQTT_PASS_PUB"]; Salt = "s4lt_pub_d4n13l_2026" },
     @{ User = "web_sub_daniel"; Pass = $envMap["MQTT_PASS_SUB"]; Salt = "s4lt_sub_d4n13l_2026" },
     @{ User = "esp32_nodes";    Pass = $envMap["MQTT_PASS_NODES"]; Salt = "s4lt_n0d3s_3sp32_2026" },
-    @{ User = "backend_rules";  Pass = $envMap["MQTT_PASS_BACKEND"]; Salt = "s4lt_b4ck3nd_rul3s_2026" }
+    @{ User = "backend_rules";  Pass = $envMap["MQTT_PASS_BACKEND"]; Salt = "s4lt_b4ck3nd_rul3s_2026" },
+    @{ User = "mobile_monitor"; Pass = $envMap["MQTT_PASS_MOBILE"]; Salt = "lab11_mobile_monitor_2026" }
 )
 
 foreach ($u in $usersToSync) {
     $computedHash = Compute-Sha256SaltSuffix $u.Pass $u.Salt
-    $sqlSync = "UPDATE mqtt_user SET password_hash = '$computedHash', salt = '$($u.Salt)', is_superuser = 0 WHERE username = '$($u.User)';"
+    $sqlSync = "INSERT INTO mqtt_user (username, password_hash, salt, is_superuser) VALUES ('$($u.User)', '$computedHash', '$($u.Salt)', 0) ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), salt = VALUES(salt), is_superuser = 0;"
     $sqlSync | docker exec -i $ContainerName mysql -u $RootUser "-p$($RootPass)" $DatabaseName
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error sincronizando credenciales para $($u.User)." -ForegroundColor Red
         exit 1
     }
 }
-Write-Host "Hashes SHA-256 (con salt suffix) coherentes para las 4 identidades." -ForegroundColor Green
+Write-Host "Hashes SHA-256 (con salt suffix) coherentes para las 5 identidades." -ForegroundColor Green
 
 # Configurar o actualizar cuenta de consulta de solo lectura para EMQX
 $sqlRo = @"

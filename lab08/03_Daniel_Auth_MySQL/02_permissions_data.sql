@@ -94,7 +94,12 @@ VALUES
     ('backend_rules', '', 'publish', 'allow', 'cistern/+/commands')
 ON DUPLICATE KEY UPDATE permission = VALUES(permission);
 
--- 2.5 Regla de Denegación por Defecto (Default Deny Fallback)
+-- 2.5 Cliente móvil del Laboratorio 11: lectura exclusiva de telemetría
+INSERT INTO mqtt_acl (username, clientid, action, permission, topic)
+VALUES ('mobile_monitor', '', 'subscribe', 'allow', 'cistern/+/telemetry')
+ON DUPLICATE KEY UPDATE permission = VALUES(permission);
+
+-- 2.6 Regla de Denegación por Defecto (Default Deny Fallback)
 -- Denegar cualquier otra acción sobre cualquier tópico no autorizado expresamente
 INSERT INTO mqtt_acl (username, clientid, action, permission, topic)
 VALUES ('$all', '', 'all', 'deny', '#')
