@@ -1,0 +1,234 @@
+// =============================================================================
+// PROYECTO UNIVERSITARIO: MONITOREO Y PREDICCIÓN DE TURBIDEZ EN CISTERNAS UNT
+// FIRMWARE NODO FÍSICO REAL ESP32 DEVKIT V1
+// Arquitectura: FreeRTOS / Arduino C++
+// Sensores: Turbidez TS-300B (GPIO 34) + Temperatura DS18B20 (GPIO 4)
+// Comunicación: Wi-Fi STA -> MQTT (Broker EMQX) -> Backend / MySQL
+// =============================================================================
+
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include "config.h"
+#include "sensors.h"
+#include "ntp_helper.h"
+
+// -------------------------------------------------------------
+// OBJETOS Y VARIABLES GLOBALES
+// -------------------------------------------------------------
+static WiFiClient espWifiClient;
+static PubSubClient mqttClient(espWifiClient);
+
+static unsigned long lastTelemetryMillis = 0;
+static unsigned long lastWifiRetryMillis = 0;
+static unsigned long lastMqttRetryMillis = 0;
+
+static int currentIntervalSec = DEFAULT_INTERVAL_SEC;
+static bool nodeInStandby = false;
+
+// -------------------------------------------------------------
+// MANEJO DE COMANDOS ENTRANTES MQTT (cistern/<dev_id>/commands)
+// -------------------------------------------------------------
+void onMqttCommandReceived(char* topic, byte* payload, unsigned int length) {
+    char message[256];
+    if (length >= sizeof(message)) {
+        length = sizeof(message) - 1;
+    }
+    memcpy(message, payload, length);
+    message[length] = '\0';
+
+    Serial.printf("[MQTT RX] Comando recibido en topico [%s]: %s\n", topic, message);
+
+    // Detección de comando "set_sampling_rate"
+    char* ratePtr = strstr(message, "\"set_sampling_rate\":");
+    if (ratePtr) {
+        int newRate = atoi(ratePtr + 20);
+        if (newRate >= MIN_INTERVAL_SEC && newRate <= MAX_INTERVAL_SEC) {
+            currentIntervalSec = newRate;
+            Serial.printf("[CONTROL] Frecuencia de muestreo actualizada dinamicamente a %d s\n", currentIntervalSec);
+        }
+    }
+
+    // Detección de órdenes de acción ("STANDBY", "RESUME", "INTENSIVE_SAMPLING")
+    if (strstr(message, "\"STANDBY\"")) {
+        nodeInStandby = true;
+        currentIntervalSec = 10; // Modo reposo / diagnóstico a 10s en vez de apagar
+        Serial.println("[CONTROL] Directiva STANDBY recibida. Ajustando a modo reposo y diagnóstico (10 s).");
+    } else if (strstr(message, "\"RESUME\"")) {
+        nodeInStandby = false;
+        currentIntervalSec = DEFAULT_INTERVAL_SEC;
+        Serial.println("[CONTROL] Nodo REACTIVADO a régimen nominal de muestreo.");
+    }
+}
+
+// -------------------------------------------------------------
+// GESTIÓN NO BLOQUEANTE DE CONEXIÓN WI-FI
+// -------------------------------------------------------------
+void checkWifiConnection() {
+    if (WiFi.status() == WL_CONNECTED) {
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now - lastWifiRetryMillis >= WIFI_RECONNECT_MS) {
+        lastWifiRetryMillis = now;
+        Serial.printf("[WIFI] Conectando a red: %s ...\n", WIFI_SSID);
+        WiFi.disconnect();
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+}
+
+// -------------------------------------------------------------
+// GESTIÓN NO BLOQUEANTE DE CONEXIÓN MQTT
+// -------------------------------------------------------------
+void checkMqttConnection() {
+    if (WiFi.status() != WL_CONNECTED) {
+        return; // Requiere Wi-Fi activo
+    }
+
+    if (mqttClient.connected()) {
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now - lastMqttRetryMillis >= 5000) {
+        lastMqttRetryMillis = now;
+        Serial.printf("[MQTT] Intentando conexion al broker %s:%d (Client ID: %s)...\n",
+                      MQTT_BROKER_HOST, MQTT_BROKER_PORT, MQTT_CLIENT_ID);
+
+        bool connected = false;
+        if (strlen(MQTT_USER) > 0) {
+            connected = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD);
+        } else {
+            connected = mqttClient.connect(MQTT_CLIENT_ID);
+        }
+
+        if (connected) {
+            Serial.println("[MQTT] Conectado exitosamente al broker EMQX.");
+            mqttClient.subscribe(TOPIC_COMMANDS, 1);
+            Serial.printf("[MQTT] Suscrito a ordenes en: %s\n", TOPIC_COMMANDS);
+        } else {
+            Serial.printf("[MQTT] Fallo de conexion. Codigo de error rc=%d\n", mqttClient.state());
+            Serial.println("  (rc=-2: Broker inalcanzable; rc=4/5: Credenciales no autorizadas)");
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// ENVÍO DE TELEMETRÍA CIBERFÍSICA
+// -------------------------------------------------------------
+void publishTelemetry() {
+    if (!mqttClient.connected()) {
+        return;
+    }
+
+    SensorData sensors = readSensors();
+    unsigned long epoch = getUnixEpoch();
+
+    bool ntpSynced = isNtpSynced();
+    char tempStr[16];
+    if (sensors.temp_valid) {
+        snprintf(tempStr, sizeof(tempStr), "%.2f", sensors.temperature_c);
+    } else {
+        snprintf(tempStr, sizeof(tempStr), "null");
+    }
+
+    char epochStr[24];
+    if (ntpSynced) {
+        snprintf(epochStr, sizeof(epochStr), "%lu", epoch);
+    } else {
+        snprintf(epochStr, sizeof(epochStr), "null");
+    }
+
+    // Construcción del payload JSON con rigor científico:
+    // turbidity_ntu es estrictamente NULL al no contar con curva nefelométrica certificada.
+    // La estimación teórica del modelo físico se transmite como turbidity_estimated_ntu.
+    char jsonBuffer[512];
+    snprintf(jsonBuffer, sizeof(jsonBuffer),
+        "{"
+          "\"device_id\":\"%s\","
+          "\"location\":\"%s\","
+          "\"timestamp\":%s,"
+          "\"timestamp_synced\":%s,"
+          "\"hardware_health\":\"%s\","
+          "\"origin\":\"%s\","
+          "\"metrics\":{"
+            "\"turbidity_ntu\":null,"
+            "\"turbidity_estimated_ntu\":%.2f,"
+            "\"turbidity_calibrated\":false,"
+            "\"temperature_c\":%s,"
+            "\"pin_voltage_v\":%.3f,"
+            "\"sensor_voltage_v\":%.3f,"
+            "\"adc_raw\":%d"
+          "}"
+        "}",
+        DEVICE_ID,
+        DEVICE_LOCATION,
+        epochStr,
+        ntpSynced ? "true" : "false",
+        sensors.hardware_health,
+        NODE_ORIGIN,
+        sensors.turbidity_estimated_ntu,
+        tempStr,
+        sensors.pin_voltage_v,
+        sensors.sensor_voltage_v,
+        sensors.raw_adc
+    );
+
+    bool ok = mqttClient.publish(TOPIC_TELEMETRY, jsonBuffer, false);
+
+    if (ok) {
+        Serial.printf("[TELEMETRÍA TX] -> Topico: %s\n", TOPIC_TELEMETRY);
+        Serial.printf("  ADC: %d | V_pin: %.3f V | V_sensor: %.3f V | Temp: %s °C | Est. NTU: %.2f (No calibrado) | Salud: %s | NTP: %s\n",
+                      sensors.raw_adc, sensors.pin_voltage_v, sensors.sensor_voltage_v,
+                      tempStr, sensors.turbidity_estimated_ntu, sensors.hardware_health, ntpSynced ? "SYNC" : "OFFLINE");
+    } else {
+        Serial.printf("[TELEMETRÍA ERROR] Fallo al publicar payload (tamano: %d bytes)\n", strlen(jsonBuffer));
+    }
+}
+
+// -------------------------------------------------------------
+// SETUP
+// -------------------------------------------------------------
+void setup() {
+    Serial.begin(115200);
+    delay(1500);
+
+    Serial.println("\n========================================================");
+    Serial.println("   SISTEMA IOT DE CALIDAD DE AGUA - TANQUE RESIDENCIAL   ");
+    Serial.println("   Monitoreo Ciberfisico en Tiempo Real (ESP32)          ");
+    Serial.println("========================================================");
+
+    // Inicialización de hardware y sensores
+    initSensors();
+
+    // Inicialización de conexión Wi-Fi (no bloqueante)
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("[INICIO] Conectando a Wi-Fi: %s ...\n", WIFI_SSID);
+
+    // Configuración del cliente MQTT
+    mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
+    mqttClient.setCallback(onMqttCommandReceived);
+    mqttClient.setBufferSize(512); // Ampliar buffer para soportar payload JSON completo
+
+    // Iniciar servicio NTP para marcas temporales epoch
+    initNtp();
+}
+
+// -------------------------------------------------------------
+// LOOP PRINCIPAL
+// -------------------------------------------------------------
+void loop() {
+    // 1. Mantener conectividad de red y mensajería
+    checkWifiConnection();
+    checkMqttConnection();
+    mqttClient.loop();
+
+    // 2. Transmisión periódica según frecuencia configurada
+    unsigned long now = millis();
+    if (now - lastTelemetryMillis >= (unsigned long)(currentIntervalSec * 1000)) {
+        lastTelemetryMillis = now;
+        publishTelemetry();
+    }
+}
