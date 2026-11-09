@@ -35,9 +35,10 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
           packages: >-
-            platforms;android-37
-            build-tools;37.0.0
+            platforms;android-36
+            build-tools;36.0.0
             ndk;27.1.12297006
 
       - name: Install JavaScript dependencies
