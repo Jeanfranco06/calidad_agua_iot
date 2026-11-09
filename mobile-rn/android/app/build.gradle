@@ -92,8 +92,9 @@ android {
             // AGP uses and creates the standard local debug keystore automatically.
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
+            // APK instalable para la entrega del laboratorio, firmada con el debug key local.
+            // Para publicar en una tienda se debe sustituir por una keystore privada de release.
+            signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

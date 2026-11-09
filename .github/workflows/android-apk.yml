@@ -45,14 +45,14 @@ jobs:
         working-directory: mobile-rn
         run: npm ci
 
-      - name: Build debug APK
+      - name: Build installable release APK
         working-directory: mobile-rn/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agua-clara-react-native-debug-apk
-          path: mobile-rn/android/app/build/outputs/apk/debug/app-debug.apk
+          name: agua-clara-react-native-apk
+          path: mobile-rn/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14

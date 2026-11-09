@@ -29,7 +29,7 @@ cd .\mobile-rn\android
 .\gradlew.bat assembleDebug
 ```
 
-APK resultante: `mobile-rn/android/app/build/outputs/apk/debug/app-debug.apk`. Para instalar con un Android conectado y depuración USB autorizada: `adb install -r .\app\build\outputs\apk\debug\app-debug.apk` desde `mobile-rn/android`.
+APK instalable e independiente de Metro: `mobile-rn/android/app/build/outputs/apk/release/app-release.apk`. Se firma con la llave debug generada por Android Gradle para la entrega del laboratorio; no la uses para publicación en tiendas. Para instalar con un Android conectado y depuración USB autorizada: `adb install -r .\app\build\outputs\apk\release\app-release.apk` desde `mobile-rn/android`.
 
 ## Probar en el celular
 
