@@ -1,0 +1,57 @@
+name: Build React Native Android APK
+
+on:
+  push:
+    branches: [feat/anthony]
+    paths:
+      - "mobile-rn/**"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile-rn/package-lock.json
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          packages: >-
+            platforms;android-37
+            build-tools;37.0.0
+            ndk;27.1.12297006
+
+      - name: Install JavaScript dependencies
+        working-directory: mobile-rn
+        run: npm ci
+
+      - name: Build debug APK
+        working-directory: mobile-rn/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agua-clara-react-native-debug-apk
+          path: mobile-rn/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
