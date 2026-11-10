@@ -2,80 +2,381 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#071b2d">
-  <meta name="description" content="Monitoreo en tiempo real de la calidad del agua por MQTT">
-  <title>Agua Clara · Monitoreo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#040810">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="TurbiSense IoT · Monitoreo de señal óptica asociada a turbidez en agua almacenada mediante IoT y regresión exploratoria">
+  <title>TurbiSense IoT · Monitoreo de Señal Óptica (ADC)</title>
+  
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Tipografía Profesional -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="styles.css">
   <script src="vendor/mqtt.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="Agua Clara, inicio">
-        <span class="brand-mark" aria-hidden="true">≈</span>
-        <span><strong>AGUA CLARA</strong><small>MONITOREO DE CISTERNAS</small></span>
-      </a>
-      <div class="connection" id="connectionBadge" data-state="offline" role="status" aria-live="polite">
-        <span class="connection-dot"></span><span id="connectionText">Desconectado</span>
+  <!-- Fondo Ambiental Ciberfísico -->
+  <div class="ambient-glow" aria-hidden="true">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+  </div>
+
+  <div class="app-viewport">
+    <!-- ESPACIADOR SEGURO SUPERIOR (NOTCH / STATUS BAR MOBILE FIX) -->
+    <div class="mobile-safe-top-spacer" aria-hidden="true"></div>
+
+    <!-- 1. NAVBAR SUPERIOR ERGONÓMICO -->
+    <header class="main-navbar">
+      <div class="brand-group">
+        <div class="brand-avatar-box">
+          <img src="icon.svg" alt="TurbiSense Logo" class="brand-logo-img">
+          <div class="avatar-ring"></div>
+        </div>
+        <div class="brand-meta">
+          <div class="brand-title-line">
+            <span class="brand-title-text">TURBISENSE</span>
+            <span class="brand-version-badge">IoT Lab UNT</span>
+          </div>
+          <span class="brand-subtitle-text">SEÑAL ÓPTICA INSTRUMENTAL & REGRESIÓN</span>
+        </div>
+      </div>
+
+      <div class="navbar-status-wrap">
+        <button class="live-status-pill" id="connStatusBtn" type="button" title="Estado del Enlace MQTT WebSocket">
+          <span class="status-pulse-dot"></span>
+          <span class="status-text" id="statusPillText">DESCONECTADO</span>
+          <span class="latency-text" id="latencyTag">-- ms</span>
+        </button>
       </div>
     </header>
 
-    <section class="intro">
-      <div>
-        <p class="eyebrow">SISTEMA DE AGUA · EN VIVO</p>
-        <h1>Calidad del agua</h1>
-        <p class="lede">Lecturas recientes de tus dispositivos conectados.</p>
+    <!-- NOTA METODOLÓGICA CIENTÍFICA (Transparencia Realista según Manuscrito) -->
+    <div class="science-notice-bar">
+      <span class="notice-icon">🔬</span>
+      <div class="notice-body">
+        <strong>ALCANCE INSTRUMENTAL:</strong>
+        <span>Monitoreo de cuentas del convertidor analógico-digital (ADC) y tensión en GPIO 34. Sin calibración metrológica NTU ni calificación sanitaria de potabilidad.</span>
       </div>
-      <div class="live-pill"><span></span> MQTT EN TIEMPO REAL</div>
-    </section>
+    </div>
 
-    <section class="panel connection-panel" aria-labelledby="setupTitle">
-      <div class="panel-heading">
-        <div><p class="eyebrow">ACCESO CON CUENTA MQTT</p><h2 id="setupTitle">Conectar al broker</h2></div>
-        <button class="text-button" id="settingsToggle" type="button" aria-expanded="true">Ocultar</button>
-      </div>
-      <div id="connectionSettings">
-        <div class="form-grid">
-          <label class="field field-wide">Broker WebSocket
-            <input id="brokerUrl" type="url" autocomplete="url" spellcheck="false">
-          </label>
-          <label class="field">Usuario MQTT
-            <input id="username" value="mobile_monitor" autocomplete="username" spellcheck="false">
-          </label>
-          <label class="field">Contraseña MQTT
-            <input id="password" type="password" autocomplete="current-password">
-          </label>
+    <!-- 2. VISTAS DE PESTAÑAS (TAB VIEWS) -->
+    <main class="views-wrapper">
+      
+      <!-- PESTAÑA A: DASHBOARD DE ADQUISICIÓN Y REGRESIÓN -->
+      <section class="tab-view active" id="viewDashboard">
+        
+        <!-- Tarjeta Hero: Caracterización de la Señal Óptica (ADC) -->
+        <article class="hero-signal-card">
+          <div class="signal-card-ambient"></div>
+          <div class="hero-top-row">
+            <div>
+              <span class="eyebrow-science">TRANSDUCCIÓN ÓPTICA · TS-300B + ESP32</span>
+              <h1 class="hero-main-title">Respuesta Instrumental (ADC)</h1>
+            </div>
+            <div class="experimental-badge" id="experimentalBadge">
+              <span class="badge-dot"></span>
+              <span class="badge-label" id="experimentalBadgeLabel">SESIÓN EXPERIMENTAL</span>
+            </div>
+          </div>
+
+          <div class="hero-data-row">
+            <div class="hero-adc-block">
+              <span class="signal-tag">VALOR PROMEDIO INSTANTÁNEO</span>
+              <div class="adc-score-row">
+                <span class="adc-score-num" id="heroAdcValue">--</span>
+                <span class="adc-score-unit">cuentas ADC</span>
+              </div>
+              <span class="adc-status-caption" id="heroAdcStatus">Presiona "Conectar" para recibir lecturas</span>
+            </div>
+
+            <div class="hero-bench-col">
+              <div class="bench-item">
+                <span class="bench-label">TENSIÓN PIN GPIO 34</span>
+                <strong class="bench-val" id="heroVoltageVal">-- <span class="u">V</span></strong>
+              </div>
+              <div class="bench-item">
+                <span class="bench-label">TEMPERATURA DS18B20</span>
+                <strong class="bench-val text-cyan" id="heroTempVal">-- <span class="u">°C</span></strong>
+              </div>
+              <div class="bench-item">
+                <span class="bench-label">PREVISIÓN RIDGE (h=5)</span>
+                <strong class="bench-val text-mint" id="heroRidgeVal">-- <span class="u">cuentas</span></strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Escala Visual de Rango ADC (0 a 4095 cuentas) -->
+          <div class="adc-range-track-wrap">
+            <div class="adc-range-markers">
+              <span>0 (Disp. Máx / Falla)</span>
+              <span>1882 (S2: Sedimento)</span>
+              <span>2133 (S1: Limpia)</span>
+              <span>4095 (Vcc)</span>
+            </div>
+            <div class="adc-track-bar">
+              <div class="adc-track-indicator" id="adcTrackIndicator" style="left: 50%;"></div>
+            </div>
+          </div>
+
+          <div class="hero-footer-benchmark">
+            <span class="bench-pill">Línea Base S1: ~2133 cuentas</span>
+            <span class="bench-pill">Sedimento S2: ~1882 cuentas</span>
+            <span class="bench-pill">Modelo Ridge: RMSE 167.43 (R² = 0.683)</span>
+          </div>
+        </article>
+
+        <!-- KPI Grid Compacto con Datos de Transmisión -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-title">ORIGEN TELEMÉTRICO</span>
+            <div class="kpi-val-row">
+              <span class="kpi-value text-cyan" id="kpiActiveOrigin">ESP32</span>
+              <span class="kpi-subtag" id="kpiOriginTag">FISICO / DOCKER</span>
+            </div>
+            <span class="kpi-detail" id="kpiNodeSplit">1 físico real · 3 simulados</span>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title-row">
+              <span class="kpi-title">CADENCIA DE INSERCIÓN</span>
+              <span class="kpi-live-dot"></span>
+            </div>
+            <div class="kpi-val-row">
+              <span class="kpi-value" id="kpiPacketRate">0</span>
+              <span class="kpi-subtag">pkt/s</span>
+            </div>
+            <span class="kpi-detail" id="kpiTotalPacketsCount">0 paquetes recibidos</span>
+          </div>
+
+          <div class="kpi-card">
+            <span class="kpi-title">SEGURIDAD PERIMETRAL</span>
+            <div class="kpi-val-row">
+              <span class="kpi-value text-mint">EMQX 5.8</span>
+              <span class="kpi-subtag">MySQL</span>
+            </div>
+            <span class="kpi-detail">Authn SHA-256 · ACL Mínimo Privilegio</span>
+          </div>
         </div>
-        <div class="actions">
-          <button class="button primary" id="connectButton" type="button">Conectar</button>
-          <button class="button secondary" id="disconnectButton" type="button" disabled>Desconectar</button>
-          <span class="topic-note">Suscripción: <code>cistern/+/telemetry</code></span>
+
+        <!-- Barra de Control Rápido de Conexión -->
+        <div class="quick-connect-bar">
+          <div class="quick-connect-info">
+            <span class="qc-label">ENLACE MQTT WEBSOCKET</span>
+            <span class="qc-target" id="quickConnectTarget">ws://[host]:8084/mqtt</span>
+          </div>
+          <button class="btn-one-click" id="btnQuickConnect" type="button">
+            ⚡ 1-Clic Conectar
+          </button>
         </div>
-        <p class="transport-note" id="transportNote">Conexión local por WebSocket. No se guardan las credenciales en el dispositivo.</p>
-      </div>
-    </section>
 
-    <section class="summary-row" aria-label="Resumen">
-      <article class="summary-card"><span class="summary-icon aqua">⌁</span><div><span class="summary-label">Dispositivos recibidos</span><strong id="deviceCount">0</strong></div></article>
-      <article class="summary-card"><span class="summary-icon mint">◷</span><div><span class="summary-label">Última actualización</span><strong id="lastUpdate">Sin lecturas</strong></div></article>
-    </section>
+        <!-- Mensaje de Diagnóstico si no conecta -->
+        <div class="conn-troubleshoot-hint" id="connTroubleshootHint" hidden>
+          <span class="ts-icon">ℹ️</span>
+          <div class="ts-text">
+            <strong>¿Problemas para conectar desde el celular?</strong>
+            <p>1. Asegúrate de que el celular y la PC estén en la misma Wi-Fi.<br>
+               2. En Windows, verifica que el perfil de red Wi-Fi esté en <em>Privada</em> (las redes <em>Públicas</em> bloquean el firewall).<br>
+               3. Pulsa <button class="link-btn" id="btnRetryWifiPreset" type="button">Usar IP Wi-Fi (192.168.18.10)</button> o <button class="link-btn" id="btnRetryLocalhost" type="button">Usar Localhost</button>.</p>
+          </div>
+        </div>
 
-    <section class="devices-section" aria-labelledby="devicesTitle">
-      <div class="section-heading">
-        <div><p class="eyebrow">LECTURAS POR SENSOR</p><h2 id="devicesTitle">Dispositivos</h2></div>
-        <span class="device-total" id="deviceTotal">0 equipos</span>
-      </div>
-      <div id="emptyState" class="empty-state">
-        <div class="empty-art" aria-hidden="true"><span>⌁</span></div>
-        <h3>Esperando lecturas</h3>
-        <p>Conéctate al broker para ver la temperatura y la turbidez de cada dispositivo.</p>
-      </div>
-      <div id="deviceGrid" class="device-grid" aria-live="polite"></div>
-    </section>
+        <!-- Encabezado de Reservorios -->
+        <div class="section-heading-row">
+          <div>
+            <h2 class="section-title">Canales de Adquisición</h2>
+            <span class="section-desc">Selecciona cualquier canal para examinar voltajes, historial y previsión</span>
+          </div>
+        </div>
 
-    <footer><span>Calidad de agua · Laboratorio 11 MQTT Mobile</span><span>Zona horaria: America/Lima</span></footer>
-  </main>
+        <!-- Estado Vacío -->
+        <div class="empty-state-card" id="dashboardEmpty">
+          <div class="empty-icon-wrap">
+            <span class="empty-emoji">📡</span>
+          </div>
+          <h3>Esperando Paquetes de Telemetría</h3>
+          <p>Presiona el botón superior <strong>"⚡ 1-Clic Conectar"</strong> para iniciar el flujo de datos desde el broker EMQX.</p>
+        </div>
+
+        <!-- Grid de Tarjetas de Estaciones -->
+        <div class="nodes-grid" id="reservoirsGrid"></div>
+      </section>
+
+      <!-- PESTAÑA B: CATÁLOGO CIBERFÍSICO -->
+      <section class="tab-view" id="viewStations">
+        <div class="tab-heading">
+          <h2 class="tab-title">Inventario de Nodos y Sensores</h2>
+          <p class="tab-subtitle">Separación explícita entre adquisición física real y simulación de prueba en Docker</p>
+        </div>
+        <div class="nodes-grid" id="stationsFullGrid"></div>
+      </section>
+
+      <!-- PESTAÑA C: BITÁCORA M2M Y AUDITORÍA (ANALYTICS) -->
+      <section class="tab-view" id="viewAnalytics">
+        <div class="tab-heading">
+          <h2 class="tab-title">Consola Protocolar de Telemetría</h2>
+          <p class="tab-subtitle">Trazabilidad de paquetes MQTT en tiempo real, latencia de WebSockets y códigos CONNACK</p>
+        </div>
+        
+        <div class="terminal-shell">
+          <div class="terminal-topbar">
+            <div class="terminal-leds">
+              <span class="led red"></span>
+              <span class="led yellow"></span>
+              <span class="led green"></span>
+            </div>
+            <span class="terminal-title">EMQX 5.8 · TÓPICO: cistern/+/telemetry</span>
+            <button class="terminal-clear-btn" id="btnTerminalClear" type="button">Limpiar</button>
+          </div>
+          <div class="terminal-stream" id="terminalOutput"></div>
+        </div>
+      </section>
+
+      <!-- PESTAÑA D: CONFIGURACIÓN Y SEGURIDAD -->
+      <section class="tab-view" id="viewSettings">
+        <div class="tab-heading">
+          <h2 class="tab-title">Configuración de Conectividad & Red</h2>
+          <p class="tab-subtitle">Ajuste de parámetros WebSocket, identidades MQTT de mínimo privilegio y firewall</p>
+        </div>
+
+        <div class="settings-panel">
+          <div class="presets-row">
+            <span class="presets-label">Selección Rápida de Red:</span>
+            <button class="preset-tag" id="presetWifiBtn" type="button">📍 Wi-Fi Local (192.168.18.10)</button>
+            <button class="preset-tag" id="presetLocalhostBtn" type="button">💻 Localhost (127.0.0.1)</button>
+          </div>
+
+          <form class="settings-form" onsubmit="event.preventDefault();">
+            <div class="input-block full">
+              <label for="inputBroker">URL WebSocket del Broker EMQX</label>
+              <input id="inputBroker" type="url" value="ws://192.168.18.10:8084/mqtt" spellcheck="false" required>
+              <span class="input-helper">Puerto host 8084 expone el listener ws:default (8083) de EMQX</span>
+            </div>
+
+            <div class="input-block">
+              <label for="inputUser">Usuario MQTT (Authn MySQL)</label>
+              <input id="inputUser" type="text" value="mobile_monitor" spellcheck="false" required>
+            </div>
+
+            <div class="input-block">
+              <label for="inputPass">
+                <span>Contraseña (Hash SHA-256)</span>
+                <button class="toggle-pass-btn" id="btnTogglePass" type="button">👁️</button>
+              </label>
+              <input id="inputPass" type="password" value="Nu2eYr2W2tKbm92URpcB!2026" required>
+            </div>
+          </form>
+
+          <div class="settings-actions">
+            <button class="btn-primary" id="btnSettingsConnect" type="button">
+              ⚡ Establecer Enlace MQTT
+            </button>
+            <button class="btn-danger" id="btnSettingsDisconnect" type="button" disabled>
+              Desconectar
+            </button>
+          </div>
+
+          <div class="polp-card">
+            <span class="polp-title">POLÍTICA DE CONTROL DE ACCESO (LABORATORIO 08)</span>
+            <ul class="polp-list">
+              <li><strong>Cuenta no-superusuario:</strong> <code>mobile_monitor</code> con permisos exclusivos <code>SUBSCRIBE</code> sobre <code>cistern/+/telemetry</code>.</li>
+              <li><strong>Denegación por defecto:</strong> Política global <code>no_match: deny</code> activa en el broker EMQX 5.8. Prohibido publicar o suscribir fuera de la regla.</li>
+              <li><strong>Persistencia de credenciales:</strong> Tabla <code>mqtt_user</code> con salado criptográfico SHA-256 individual en MySQL 8.0.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 3. MODAL DE FICHA TÉCNICA (DRILL-DOWN INSTRUMENTAL) -->
+    <div class="modal-backdrop" id="stationModal" hidden>
+      <div class="modal-window">
+        <div class="modal-top">
+          <div class="modal-info-col">
+            <div class="modal-id-line">
+              <h3 id="modalStationId">🚰 NODO INSTRUMENTAL</h3>
+              <span class="badge-origin" id="modalOriginTag">ORIGEN</span>
+            </div>
+            <span class="modal-location-text" id="modalLocation">Ubicación</span>
+          </div>
+          <button class="modal-x-btn" id="btnModalClose" type="button" aria-label="Cerrar modal">✕</button>
+        </div>
+
+        <div class="modal-scroll-area">
+          <div class="modal-condition-box" id="modalConditionBox">
+            <strong id="modalConditionTitle">RÉGIMEN OBSERVADO</strong>
+            <span id="modalConditionDesc">Comportamiento de la señal instrumental TS-300B.</span>
+          </div>
+
+          <div class="metrics-quad-grid">
+            <div class="quad-box">
+              <span class="quad-label">SEÑAL ADC REGISTRADA</span>
+              <strong class="quad-number text-cyan" id="modalAdcVal">--</strong>
+              <span class="quad-footnote">Resolución 12 bits (ESP32)</span>
+            </div>
+
+            <div class="quad-box">
+              <span class="quad-label">TENSIÓN ACONDICIONADA</span>
+              <strong class="quad-number" id="modalVoltVal">--</strong>
+              <span class="quad-footnote">Divisor 10kΩ / 20kΩ (GPIO 34)</span>
+            </div>
+
+            <div class="quad-box">
+              <span class="quad-label">TEMPERATURA 1-WIRE</span>
+              <strong class="quad-number text-mint" id="modalTempVal">--</strong>
+              <span class="quad-footnote">Sonda Dallas DS18B20 (GPIO 4)</span>
+            </div>
+
+            <div class="quad-box">
+              <span class="quad-label">INTERVALO EFECTIVO</span>
+              <strong class="quad-number" id="modalIntervalVal">--</strong>
+              <span class="quad-footnote">Cadencia mediana de inserción</span>
+            </div>
+          </div>
+
+          <div class="history-block">
+            <span class="history-block-title">SERIES TEMPORALES RECIENTES (ÚLTIMAS LECTURAS)</span>
+            <div class="history-list" id="modalHistoryTable"></div>
+          </div>
+
+          <button class="modal-close-wide-btn" id="btnModalDismiss" type="button">
+            ✕ Cerrar Ficha Técnica
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. BOTTOM TAB BAR ERGONÓMICO -->
+    <nav class="bottom-tab-bar">
+      <button class="tab-item active" data-tab="viewDashboard" type="button">
+        <span class="tab-icon">📊</span>
+        <span class="tab-name">Dashboard</span>
+      </button>
+
+      <button class="tab-item" data-tab="viewStations" type="button">
+        <span class="tab-icon">🚰</span>
+        <span class="tab-name">Nodos</span>
+      </button>
+
+      <button class="tab-item" data-tab="viewAnalytics" type="button">
+        <span class="tab-icon">📈</span>
+        <span class="tab-name">Eventos</span>
+      </button>
+
+      <button class="tab-item" data-tab="viewSettings" type="button">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-name">Ajustes</span>
+      </button>
+    </nav>
+  </div>
 </body>
 </html>
