@@ -1,1348 +1,830 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  SafeAreaView,
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
-  View,
   Text,
-  ScrollView,
-  Pressable,
   TextInput,
-  Modal,
-  ActivityIndicator,
-  Platform,
-  KeyboardAvoidingView,
+  useColorScheme,
+  View,
 } from 'react-native';
-import mqtt, {MqttClient} from 'mqtt';
+import {SafeAreaProvider, useSafeAreaInsets} from 'react-native-safe-area-context';
+import {connectMqtt, LinkStatus, MqttLiteHandle} from './src/mqttLite';
+import {Palette, resolvePalette, ThemeMode} from './src/theme';
 
 // ============================================================================
-// 1. MODELO DE DATOS CIENTÍFICO (Según Manuscrito INGENIUS UNT)
+// Modelo de datos
 // ============================================================================
-export interface TelemetryReading {
-  adcRaw: number;
-  voltage: number | null;
-  temperature: number | null;
-  ridgePred: number;
-  timestamp: Date;
+interface Reading {
+  adc: number;
+  at: number;
 }
 
-export interface NodeChannel {
+interface NodeData {
   id: string;
-  name: string;
   location: string;
-  isPhysical: boolean;
-  adcRaw: number;
+  physical: boolean;
+  adc: number;
+  adcDerived: boolean;
   voltage: number | null;
   temperature: number | null;
-  ridgePred: number;
-  hardwareHealth: 'OK' | 'PROBE_DISCONNECTED' | 'SHORT_CIRCUIT' | 'STANDBY' | string;
-  regimen: 's1' | 's2' | 'incidente';
-  regimenLabel: string;
-  samplingInterval: number;
-  lastSeen: Date;
-  history: TelemetryReading[];
-  rawPayload?: any;
+  health: string;
+  trend: number;
+  lastSeen: number;
+  history: Reading[];
+  raw: unknown;
 }
 
-export type ActiveTab = 'dashboard' | 'stations' | 'analytics' | 'settings';
+interface LogLine {
+  id: number;
+  time: string;
+  text: string;
+  level: 'info' | 'success' | 'warn' | 'error';
+}
 
-// ============================================================================
-// 2. CONSTANTES DEL SISTEMA Y BENCHMARKS
-// ============================================================================
-const MQTT_CONFIG = {
-  TOPIC_TELEMETRY: 'cistern/+/telemetry',
-  DEFAULT_BROKER: 'ws://192.168.18.10:8084/mqtt',
-  DEFAULT_USER: 'mobile_monitor',
-  DEFAULT_PASS: 'Nu2eYr2W2tKbm92URpcB!2026',
+type Tab = 'resumen' | 'nodos' | 'registro' | 'ajustes';
+
+const TOPIC = 'cistern/+/telemetry';
+const DEFAULTS = {
+  wifi: 'ws://192.168.18.10:8084/mqtt',
+  local: 'ws://127.0.0.1:8084/mqtt',
+  user: 'mobile_monitor',
+  pass: 'Nu2eYr2W2tKbm92URpcB!2026',
 };
 
-const BENCHMARKS = {
-  S1_CLEAN_ADC: 2133.30,   // Sesión 1: Agua limpia (~2133 cuentas)
-  S2_SEDIMENT_ADC: 1882.16, // Sesión 2: Sedimento agregado (~1882 cuentas)
-  S3_TEST_ADC: 1897.54,     // Sesión 3: Repetición experimental (test set)
-  RIDGE_RMSE: 167.43,       // Error cuadrático modelo Ridge (h=5)
-  RIDGE_R2: 0.683,          // Coeficiente de determinación R²
+// Valores medidos en el estudio (cuentas ADC de 12 bits, GPIO 34).
+const STUDY = {
+  s1: 2133,
+  s2: 1882,
+  s3: 1897,
+  ridgeRmse: 167.43,
+  persistenceRmse: 185.59,
+  ridgeR2: 0.683,
 };
 
-const THEME = {
-  colors: {
-    bgDark: '#030712',
-    bgCard: '#091222',
-    bgCardElevated: '#0f1c34',
-    bgInput: '#050b16',
-    cyan: '#00e5ff',
-    cyanGlow: 'rgba(0, 229, 255, 0.28)',
-    mint: '#00f2a9',
-    amber: '#ffb703',
-    rose: '#ff3366',
-    textPrimary: '#ffffff',
-    textSecondary: '#94a3b8',
-    textMuted: '#546681',
-    border: 'rgba(255, 255, 255, 0.08)',
-    borderActive: 'rgba(0, 229, 255, 0.4)',
-  },
+const pad = (n: number) => String(n).padStart(2, '0');
+const clock = (t: number) => {
+  const d = new Date(t);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-const formatPetTime = (date: Date): string => {
-  const pet = new Date(date.getTime() - 5 * 60 * 60 * 1000);
-  const h = String(pet.getUTCHours()).padStart(2, '0');
-  const m = String(pet.getUTCMinutes()).padStart(2, '0');
-  const s = String(pet.getUTCSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+const describeSignal = (adc: number): {label: string; tone: 'primary' | 'warn' | 'soft'} => {
+  if (adc >= 2050) return {label: 'Cercana a la línea base S1 (agua limpia)', tone: 'primary'};
+  if (adc >= 1700) return {label: 'Cercana al régimen S2 (con sedimento)', tone: 'warn'};
+  return {label: 'Fuera del rango de referencia del estudio', tone: 'soft'};
+};
+
+const STATUS_TEXT: Record<LinkStatus, string> = {
+  idle: 'Sin enlace',
+  connecting: 'Conectando',
+  connected: 'En línea',
+  reconnecting: 'Reintentando',
+  error: 'Error',
 };
 
 // ============================================================================
-// 3. COMPONENTE PRINCIPAL (TurbiSense IoT)
+// Componentes pequeños
 // ============================================================================
-export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
-  const [selectedNode, setSelectedNode] = useState<NodeChannel | null>(null);
-
-  const [brokerUrl, setBrokerUrl] = useState(MQTT_CONFIG.DEFAULT_BROKER);
-  const [username, setUsername] = useState(MQTT_CONFIG.DEFAULT_USER);
-  const [password, setPassword] = useState(MQTT_CONFIG.DEFAULT_PASS);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
-  const [latencyMs, setLatencyMs] = useState<number | null>(null);
-  const [mqttClient, setMqttClient] = useState<MqttClient | null>(null);
-  const [mqttLogs, setMqttLogs] = useState<Array<{id: string; time: string; text: string; type: 'info' | 'success' | 'warn' | 'error'}>>([]);
-
-  const [nodes, setNodes] = useState<Record<string, NodeChannel>>({});
-  const [totalPackets, setTotalPackets] = useState<number>(0);
-  const [packetRate, setPacketRate] = useState<number>(0);
-  const [counterWindow, setCounterWindow] = useState<number>(0);
-
-  const addLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
-    const time = formatPetTime(new Date());
-    setMqttLogs(prev => [{id: Math.random().toString(36).substring(2, 9), time, text, type}, ...prev.slice(0, 49)]);
-  }, []);
-
-  useEffect(() => {
-    return () => { mqttClient?.end(true); };
-  }, [mqttClient]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPacketRate(counterWindow);
-      setCounterWindow(0);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [counterWindow]);
-
-  const handleDisconnect = useCallback(() => {
-    if (mqttClient) {
-      mqttClient.end(true);
-      setMqttClient(null);
-    }
-    setConnectionStatus('idle');
-    setLatencyMs(null);
-    addLog('Sesión MQTT desconectada', 'info');
-  }, [mqttClient, addLog]);
-
-  const handleConnect = useCallback((targetUrl?: string) => {
-    handleDisconnect();
-    const url = targetUrl || brokerUrl.trim();
-    if (!url || !username.trim()) {
-      addLog('URL y Usuario son obligatorios', 'error');
-      return;
-    }
-
-    setConnectionStatus('connecting');
-    addLog(`Conectando a broker: ${url}...`, 'info');
-    const startPing = Date.now();
-
-    try {
-      const client = mqtt.connect(url, {
-        username: username.trim(),
-        password: password.trim() || MQTT_CONFIG.DEFAULT_PASS,
-        clientId: `turbisense_rn_${Math.random().toString(16).substring(2, 8)}`,
-        protocolVersion: 4,
-        clean: true,
-        connectTimeout: 7000,
-        reconnectPeriod: 3000,
-        resubscribe: true,
-        forceNativeWebSocket: true,
-      } as any);
-
-      setMqttClient(client);
-
-      client.on('connect', () => {
-        const ping = Date.now() - startPing;
-        setLatencyMs(ping);
-        setConnectionStatus('connected');
-        addLog(`Enlace establecido con EMQX (Ping: ${ping}ms)`, 'success');
-
-        client.subscribe(MQTT_CONFIG.TOPIC_TELEMETRY, {qos: 0}, (err) => {
-          if (err) {
-            addLog(`Error en suscripción: ${err.message}`, 'error');
-          } else {
-            addLog(`Suscrito a ${MQTT_CONFIG.TOPIC_TELEMETRY} (QoS 0)`, 'success');
-          }
-        });
-      });
-
-      client.on('message', (topic, payload) => {
-        try {
-          const raw = JSON.parse(payload.toString());
-          const now = new Date();
-          const devId = String(raw.device_id || topic.split('/')[1] || 'ESP32_NODO');
-          const metrics = raw.metrics || {};
-
-          setTotalPackets(v => v + 1);
-          setCounterWindow(v => v + 1);
-
-          let volt = metrics.pin_voltage_v ?? metrics.sensor_voltage;
-          if (typeof volt === 'number') volt = Number(volt.toFixed(3));
-
-          let adc = metrics.adc_raw;
-          if (adc === null || adc === undefined) {
-            if (typeof volt === 'number' && volt > 0) {
-              adc = Math.round((volt / 3.3) * 4095);
-            } else {
-              adc = 2100;
-            }
-          }
-          adc = Math.max(0, Math.min(4095, adc));
-
-          let temp = metrics.temperature_c;
-          if (typeof temp === 'number') temp = Number(temp.toFixed(2));
-
-          const ridge = Math.round(0.915 * adc + 0.085 * BENCHMARKS.S1_CLEAN_ADC);
-
-          let regimen: 's1' | 's2' | 'incidente' = 's1';
-          let regimenLabel = 'RÉGIMEN S1: SEÑAL ESTABLE';
-          if (adc < 1000 || String(raw.hardware_health || '').includes('STANDBY')) {
-            regimen = 'incidente';
-            regimenLabel = 'ANOMALÍA / FALLA';
-          } else if (adc < 2000) {
-            regimen = 's2';
-            regimenLabel = 'RÉGIMEN S2: SEDIMENTO';
-          }
-
-          const isPhysical = String(raw.origin || devId).toUpperCase().includes('FISICO') ||
-                             String(devId).toUpperCase().includes('UNT');
-
-          setNodes(prev => {
-            const existing = prev[devId];
-            const history = existing ? [...existing.history] : [];
-            history.push({adcRaw: adc, voltage: volt, temperature: temp, ridgePred: ridge, timestamp: now});
-            if (history.length > 20) history.shift();
-
-            const updated: NodeChannel = {
-              id: devId,
-              name: devId.replace(/_/g, ' '),
-              location: raw.location || 'Depósito Experimental',
-              isPhysical,
-              adcRaw: adc,
-              voltage: volt,
-              temperature: temp,
-              ridgePred: ridge,
-              hardwareHealth: raw.hardware_health || 'OK',
-              regimen,
-              regimenLabel,
-              samplingInterval: raw.sampling_rate || (adc < 2000 ? 1 : 4),
-              lastSeen: now,
-              history,
-              rawPayload: raw,
-            };
-
-            return {...prev, [devId]: updated};
-          });
-        } catch (e: any) {
-          addLog(`Error en trama JSON: ${e?.message}`, 'warn');
-        }
-      });
-
-      client.on('error', (err) => {
-        addLog(`Error MQTT: ${err?.message || 'Error de socket'}`, 'error');
-        setConnectionStatus('error');
-      });
-
-      client.on('close', () => {
-        setConnectionStatus('idle');
-      });
-    } catch (err: any) {
-      setConnectionStatus('error');
-      addLog(`Error fatal: ${err?.message}`, 'error');
-    }
-  }, [brokerUrl, username, password, handleDisconnect, addLog]);
-
-  const nodeList = useMemo(() => {
-    return Object.values(nodes).sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime());
-  }, [nodes]);
-
-  const systemStats = useMemo(() => {
-    if (nodeList.length === 0) {
-      return {avgAdc: 0, avgVolt: 0, avgTemp: 0, avgRidge: 0, physicalCount: 0};
-    }
-    let sumAdc = 0, sumVolt = 0, sumTemp = 0, sumRidge = 0, physical = 0;
-    nodeList.forEach(n => {
-      sumAdc += n.adcRaw;
-      sumVolt += (n.voltage || 1.86);
-      sumTemp += (n.temperature || 27.1);
-      sumRidge += n.ridgePred;
-      if (n.isPhysical) physical++;
-    });
-    return {
-      avgAdc: Math.round(sumAdc / nodeList.length),
-      avgVolt: (sumVolt / nodeList.length).toFixed(3),
-      avgTemp: (sumTemp / nodeList.length).toFixed(1),
-      avgRidge: Math.round(sumRidge / nodeList.length),
-      physicalCount: physical,
-    };
-  }, [nodeList]);
-
-  // ==========================================================================
-  // RENDER: DASHBOARD INSTRUMENTAL
-  // ==========================================================================
-  const renderDashboard = () => (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      
-      {/* NOTA CIENTÍFICA REALISTA */}
-      <View style={styles.scienceNoticeBox}>
-        <Text style={styles.scienceNoticeText}>
-          🔬 <Text style={{fontWeight: '800', color: THEME.colors.cyan}}>OBJETIVO METODOLÓGICO:</Text> Señal óptica (cuentas ADC 12-bits) en GPIO 34. Sin calibración metrológica NTU ni índice de potabilidad sanitaria.
-        </Text>
-      </View>
-
-      {/* TARJETA HERO: CARACTERIZACIÓN DE SEÑAL ÓPTICA */}
-      <View style={styles.heroSignalCard}>
-        <View style={styles.heroTopRow}>
-          <View>
-            <Text style={styles.heroEyebrow}>TRANSDUCCIÓN ÓPTICA · TS-300B</Text>
-            <Text style={styles.heroTitle}>Señal Instrumental (ADC)</Text>
-          </View>
-          <View style={styles.regimenPill}>
-            <Text style={styles.regimenPillText}>
-              {systemStats.avgAdc >= 2050 ? 'LÍNEA BASE S1' : (systemStats.avgAdc >= 1700 ? 'DISPERSIÓN S2' : 'PERTURBACIÓN')}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.heroDataRow}>
-          <View>
-            <Text style={styles.heroScoreNum}>
-              {nodeList.length > 0 ? `${systemStats.avgAdc}` : '--'}
-            </Text>
-            <Text style={styles.heroScoreUnit}>cuentas ADC promedio</Text>
-          </View>
-
-          <View style={styles.heroSubStats}>
-            <View style={styles.subStatRow}>
-              <Text style={styles.subStatLabel}>TENSIÓN PIN GPIO 34</Text>
-              <Text style={styles.subStatVal}>{nodeList.length > 0 ? `${systemStats.avgVolt} V` : '--'}</Text>
-            </View>
-            <View style={styles.subStatRow}>
-              <Text style={styles.subStatLabel}>TEMPERATURA DS18B20</Text>
-              <Text style={[styles.subStatVal, {color: THEME.colors.cyan}]}>{nodeList.length > 0 ? `${systemStats.avgTemp} °C` : '--'}</Text>
-            </View>
-            <View style={styles.subStatRow}>
-              <Text style={styles.subStatLabel}>PREVISIÓN RIDGE (h=5)</Text>
-              <Text style={[styles.subStatVal, {color: THEME.colors.mint}]}>{nodeList.length > 0 ? `${systemStats.avgRidge} cuentas` : '--'}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.benchmarkRow}>
-          <Text style={styles.benchTag}>S1: ~2133 cuentas</Text>
-          <Text style={styles.benchTag}>S2: ~1882 cuentas</Text>
-          <Text style={styles.benchTag}>Ridge RMSE: 167.43</Text>
-        </View>
-      </View>
-
-      {/* BARRA DE 1-CLIC CONECTAR ROBUSTO */}
-      <View style={styles.quickConnectBanner}>
-        <View style={{flex: 1}}>
-          <Text style={styles.qcTitle}>ENLACE MQTT WEBSOCKET</Text>
-          <Text style={styles.qcSubtitle} numberOfLines={1}>{brokerUrl}</Text>
-        </View>
-        <Pressable
-          style={[styles.qcBtn, connectionStatus === 'connected' && styles.qcBtnConnected]}
-          onPress={connectionStatus === 'connected' ? handleDisconnect : () => handleConnect()}
-        >
-          {connectionStatus === 'connecting' ? (
-            <ActivityIndicator color={THEME.colors.bgDark} />
-          ) : (
-            <Text style={styles.qcBtnText}>
-              {connectionStatus === 'connected' ? '✓ Desconectar' : '⚡ 1-Clic Conectar'}
-            </Text>
-          )}
-        </Pressable>
-      </View>
-
-      {/* METRICAS DE TRANSACCIÓN */}
-      <View style={styles.kpiRow}>
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiTag}>ORIGEN DE DATOS</Text>
-          <Text style={[styles.kpiNum, {color: THEME.colors.cyan}]}>
-            {systemStats.physicalCount > 0 ? 'ESP32 REAL' : 'VIRTUAL'}
-          </Text>
-          <Text style={styles.kpiSub}>{systemStats.physicalCount} físico · {nodeList.length - systemStats.physicalCount} virtual</Text>
-        </View>
-
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiTag}>CADENCIA</Text>
-          <Text style={styles.kpiNum}>{packetRate} <Text style={{fontSize: 10, color: THEME.colors.textSecondary}}>pkt/s</Text></Text>
-          <Text style={styles.kpiSub}>{totalPackets.toLocaleString()} paquetes</Text>
-        </View>
-
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiTag}>LATENCIA MQTT</Text>
-          <Text style={[styles.kpiNum, latencyMs ? {color: THEME.colors.mint} : {color: THEME.colors.textMuted}]}>
-            {latencyMs ? `${latencyMs}` : '--'} <Text style={{fontSize: 10, color: THEME.colors.textSecondary}}>ms</Text>
-          </Text>
-          <Text style={styles.kpiSub}>Transporte WS</Text>
-        </View>
-      </View>
-
-      {/* SECCIÓN DE CANALES DE ADQUISICIÓN */}
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>CANALES DE ADQUISICIÓN</Text>
-        <Text style={styles.sectionCount}>{nodeList.length} registrados</Text>
-      </View>
-
-      {nodeList.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyIcon}>📡</Text>
-          <Text style={styles.emptyTitle}>Esperando Telemetría</Text>
-          <Text style={styles.emptyDesc}>Presiona "⚡ 1-Clic Conectar" para vincular con el broker EMQX.</Text>
-        </View>
-      ) : (
-        nodeList.map(node => renderNodeCard(node))
-      )}
-    </ScrollView>
+function Bars({values, color, track, height = 36}: {values: number[]; color: string; track: string; height?: number}) {
+  if (values.length < 2) {
+    return <View style={{height, borderRadius: 6, backgroundColor: track}} />;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = Math.max(max - min, 40);
+  return (
+    <View style={{height, flexDirection: 'row', alignItems: 'flex-end', gap: 2}}>
+      {values.map((v, i) => (
+        <View
+          key={i}
+          style={{
+            flex: 1,
+            height: Math.max(3, ((v - min) / span) * (height - 3) + 3),
+            borderRadius: 2,
+            backgroundColor: color,
+            opacity: 0.35 + 0.65 * ((i + 1) / values.length),
+          }}
+        />
+      ))}
+    </View>
   );
+}
 
-  // ==========================================================================
-  // RENDER: TARJETA DE CANAL (NODE CARD)
-  // ==========================================================================
-  const renderNodeCard = (node: NodeChannel) => {
-    const isS1 = node.regimen === 's1';
-    const isS2 = node.regimen === 's2';
-    const color = isS1 ? THEME.colors.mint : (isS2 ? THEME.colors.amber : THEME.colors.rose);
-
-    return (
-      <Pressable
-        key={node.id}
-        style={[styles.nodeCard, {borderLeftColor: color, borderLeftWidth: 4}]}
-        onPress={() => setSelectedNode(node)}
-      >
-        <View style={styles.nodeCardTop}>
-          <View>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Text style={styles.nodeIdText}>🚰 {node.id}</Text>
-              <View style={[styles.badgeOrigin, node.isPhysical && styles.badgeOriginPhysical]}>
-                <Text style={styles.badgeOriginText}>{node.isPhysical ? 'FÍSICO REAL' : 'VIRTUAL'}</Text>
-              </View>
-            </View>
-            <Text style={styles.nodeLocationText}>{node.location}</Text>
-          </View>
-          <View style={[styles.regimenChip, {borderColor: color, backgroundColor: `${color}18`}]}>
-            <Text style={[styles.regimenChipText, {color}]}>{node.regimenLabel}</Text>
-          </View>
-        </View>
-
-        <View style={styles.nodeMetricsRow}>
-          <View style={styles.metricCell}>
-            <Text style={styles.metricCellLabel}>SEÑAL ADC (TS-300B)</Text>
-            <Text style={[styles.metricCellNum, {color}]}>
-              {node.adcRaw} <Text style={styles.metricCellUnit}>cuentas</Text>
-            </Text>
-          </View>
-
-          <View style={styles.metricCell}>
-            <Text style={styles.metricCellLabel}>TENSIÓN GPIO 34</Text>
-            <Text style={[styles.metricCellNum, {color: THEME.colors.cyan}]}>
-              {node.voltage !== null ? node.voltage.toFixed(3) : '—'} <Text style={styles.metricCellUnit}>V</Text>
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.nodeCardFooter}>
-          <Text style={styles.nodeFooterText}>Sensor: {node.hardwareHealth.replace(/_/g, ' ')}</Text>
-          <Text style={styles.nodeFooterText}>🕒 {formatPetTime(node.lastSeen)} ({node.samplingInterval}s)</Text>
-        </View>
-      </Pressable>
-    );
-  };
-
-  // ==========================================================================
-  // RENDER: VISTA EVENTOS PROTOCOLARES (ANALYTICS)
-  // ==========================================================================
-  const renderAnalytics = () => (
-    <View style={styles.tabViewFull}>
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Consola Protocolar de Telemetría</Text>
-        <Text style={styles.pageSubtitle}>Inspección de tramas MQTT y latencia en tiempo real</Text>
+function ReferenceScale({adc, p}: {adc: number | null; p: Palette}) {
+  // Escala 1500 – 2400 cuentas con las referencias S2 y S1 marcadas.
+  const lo = 1500;
+  const hi = 2400;
+  const pos = (v: number) => `${Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100))}%` as const;
+  return (
+    <View style={{marginTop: 18}}>
+      <View style={{height: 8, borderRadius: 4, backgroundColor: p.surfaceAlt}}>
+        <View style={{position: 'absolute', left: pos(STUDY.s2), top: -3, width: 2, height: 14, backgroundColor: p.warn}} />
+        <View style={{position: 'absolute', left: pos(STUDY.s1), top: -3, width: 2, height: 14, backgroundColor: p.primary}} />
+        {adc !== null && (
+          <View
+            style={{
+              position: 'absolute',
+              left: pos(adc),
+              top: -4,
+              marginLeft: -8,
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              backgroundColor: p.ink,
+              borderWidth: 3,
+              borderColor: p.surface,
+            }}
+          />
+        )}
       </View>
-
-      <View style={styles.terminalContainer}>
-        <View style={styles.terminalTop}>
-          <Text style={styles.terminalTitle}>EMQX 5.8 · TÓPICO: cistern/+/telemetry</Text>
-          <Pressable onPress={() => setMqttLogs([])}>
-            <Text style={styles.terminalClear}>Limpiar</Text>
-          </Pressable>
-        </View>
-        <ScrollView style={{flex: 1}}>
-          {mqttLogs.length === 0 ? (
-            <Text style={styles.terminalEmpty}>Sin eventos registrados. Conéctate para observar el tráfico.</Text>
-          ) : (
-            mqttLogs.map(l => (
-              <View key={l.id} style={{flexDirection: 'row', gap: 6, marginVertical: 2}}>
-                <Text style={styles.logTime}>[{l.time}]</Text>
-                <Text style={[styles.logText, {color: l.type === 'success' ? THEME.colors.mint : (l.type === 'warn' ? THEME.colors.amber : (l.type === 'error' ? THEME.colors.rose : THEME.colors.cyan))}]}>
-                  {l.text}
-                </Text>
-              </View>
-            ))
-          )}
-        </ScrollView>
+      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 10}}>
+        <Text style={{fontSize: 11, color: p.warn}}>S2 · {STUDY.s2}</Text>
+        <Text style={{fontSize: 11, color: p.primary}}>S1 · {STUDY.s1}</Text>
       </View>
     </View>
   );
+}
 
-  // ==========================================================================
-  // RENDER: VISTA AJUSTES
-  // ==========================================================================
-  const renderSettings = () => (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Conectividad & Seguridad</Text>
-        <Text style={styles.pageSubtitle}>Parámetros de broker y control de acceso POLP</Text>
+// ============================================================================
+// Aplicación
+// ============================================================================
+function Main() {
+  const system = useColorScheme();
+  const [mode, setMode] = useState<ThemeMode>('light');
+  const p = useMemo(() => resolvePalette(mode, system), [mode, system]);
+  const s = useMemo(() => makeStyles(p), [p]);
+  const insets = useSafeAreaInsets();
+
+  const [tab, setTab] = useState<Tab>('resumen');
+  const [url, setUrl] = useState(DEFAULTS.wifi);
+  const [user, setUser] = useState(DEFAULTS.user);
+  const [pass, setPass] = useState(DEFAULTS.pass);
+  const [showPass, setShowPass] = useState(false);
+
+  const [status, setStatus] = useState<LinkStatus>('idle');
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
+  const [nodes, setNodes] = useState<Record<string, NodeData>>({});
+  const [selected, setSelected] = useState<string | null>(null);
+  const [mix, setMix] = useState<number[]>([]);
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [total, setTotal] = useState(0);
+  const [rate, setRate] = useState(0);
+
+  const handle = useRef<MqttLiteHandle | null>(null);
+  const counter = useRef(0);
+  const logId = useRef(0);
+
+  const log = useCallback((text: string, level: LogLine['level'] = 'info') => {
+    logId.current += 1;
+    const line = {id: logId.current, time: clock(Date.now()), text, level};
+    setLogs(prev => [line, ...prev].slice(0, 80));
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setRate(counter.current);
+      counter.current = 0;
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => () => handle.current?.close(), []);
+
+  const onMessage = useCallback((topic: string, payload: string) => {
+    const raw = JSON.parse(payload);
+    const now = Date.now();
+    const id = String(raw.device_id || topic.split('/')[1] || 'nodo');
+    const m = raw.metrics || {};
+
+    const volt = typeof m.pin_voltage_v === 'number' ? m.pin_voltage_v : typeof m.sensor_voltage === 'number' ? m.sensor_voltage : null;
+    let adc: number;
+    let derived = false;
+    if (typeof m.adc_raw === 'number') {
+      adc = m.adc_raw;
+    } else if (volt !== null) {
+      adc = Math.round((volt / 3.3) * 4095);
+      derived = true;
+    } else {
+      return;
+    }
+    adc = Math.max(0, Math.min(4095, adc));
+    const temp = typeof m.temperature_c === 'number' ? m.temperature_c : null;
+    const origin = String(raw.origin || '').toUpperCase();
+    const physical = origin.includes('FISICO') || origin.includes('PHYSICAL');
+
+    counter.current += 1;
+    setTotal(v => v + 1);
+    setMix(prev => [...prev, adc].slice(-36));
+    setNodes(prev => {
+      const old = prev[id];
+      const history = [...(old?.history ?? []), {adc, at: now}].slice(-30);
+      const trend = old ? old.trend + 0.3 * (adc - old.trend) : adc;
+      return {
+        ...prev,
+        [id]: {
+          id,
+          location: String(raw.location || '—').replace(/_/g, ' '),
+          physical,
+          adc,
+          adcDerived: derived,
+          voltage: volt,
+          temperature: temp,
+          health: String(raw.hardware_health || 'OK'),
+          trend,
+          lastSeen: now,
+          history,
+          raw,
+        },
+      };
+    });
+  }, []);
+
+  const connect = useCallback(
+    (target?: string) => {
+      handle.current?.close();
+      const finalUrl = (target ?? url).trim();
+      if (!/^wss?:\/\//i.test(finalUrl)) {
+        log('La URL debe empezar con ws:// o wss://', 'error');
+        setStatus('error');
+        return;
+      }
+      if (target) setUrl(target);
+      setConnectedAt(null);
+      handle.current = connectMqtt({
+        url: finalUrl,
+        username: user.trim(),
+        password: pass,
+        topic: TOPIC,
+        onStatus: st => {
+          setStatus(st);
+          if (st === 'connected') setConnectedAt(Date.now());
+        },
+        onLog: log,
+        onMessage: (t, pl) => {
+          try {
+            onMessage(t, pl);
+          } catch (e: any) {
+            log(`Trama no válida: ${e?.message ?? e}`, 'warn');
+          }
+        },
+      });
+    },
+    [url, user, pass, log, onMessage],
+  );
+
+  const disconnect = useCallback(() => {
+    handle.current?.close();
+    handle.current = null;
+    setConnectedAt(null);
+    log('Enlace cerrado por el usuario', 'info');
+  }, [log]);
+
+  const list = useMemo(() => Object.values(nodes).sort((a, b) => a.id.localeCompare(b.id)), [nodes]);
+  const avg = useMemo(() => {
+    if (!list.length) return null;
+    const mean = (f: (n: NodeData) => number | null) => {
+      const v = list.map(f).filter((x): x is number => x !== null);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    };
+    return {
+      adc: Math.round(list.reduce((a, n) => a + n.adc, 0) / list.length),
+      volt: mean(n => n.voltage),
+      temp: mean(n => n.temperature),
+      trend: Math.round(list.reduce((a, n) => a + n.trend, 0) / list.length),
+    };
+  }, [list]);
+
+  const online = status === 'connected';
+  const busy = status === 'connecting' || status === 'reconnecting';
+  const selectedNode = selected ? nodes[selected] : null;
+
+  const tone = (t: 'primary' | 'warn' | 'soft') => (t === 'primary' ? p.primary : t === 'warn' ? p.warn : p.inkSoft);
+
+  // --------------------------------------------------------------- Resumen
+  const Resumen = (
+    <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      {!online && (
+        <View style={s.card}>
+          <Text style={s.eyebrow}>Enlace con el broker</Text>
+          <Text style={s.cardTitle}>{busy ? 'Estableciendo conexión…' : 'Aún no hay datos'}</Text>
+          <Text style={s.body}>
+            Se conecta a EMQX con el usuario de solo lectura <Text style={s.strong}>{user}</Text> y se suscribe a{' '}
+            <Text style={s.mono}>{TOPIC}</Text>.
+          </Text>
+          <Text style={[s.mono, {marginTop: 8, color: p.inkSoft}]}>{url}</Text>
+          <Pressable style={[s.btn, busy && s.btnDisabled]} disabled={busy} onPress={() => connect()}>
+            {busy ? <ActivityIndicator color={p.onPrimary} /> : <Text style={s.btnText}>Conectar</Text>}
+          </Pressable>
+          {status === 'error' || status === 'reconnecting' ? (
+            <Text style={[s.small, {marginTop: 10, color: p.bad}]}>
+              Si no conecta, revisa en Registro el motivo exacto, o prueba otra dirección en Ajustes.
+            </Text>
+          ) : null}
+        </View>
+      )}
+
+      <View style={s.card}>
+        <Text style={s.eyebrow}>Señal óptica promedio · sensor TS-300B</Text>
+        <View style={{flexDirection: 'row', alignItems: 'baseline', marginTop: 6}}>
+          <Text style={s.bigNumber}>{avg ? avg.adc : '—'}</Text>
+          <Text style={s.unit}> cuentas ADC</Text>
+        </View>
+        <Text style={[s.body, {color: avg ? tone(describeSignal(avg.adc).tone) : p.inkFaint}]}>
+          {avg ? describeSignal(avg.adc).label : 'Esperando la primera lectura'}
+        </Text>
+        <ReferenceScale adc={avg ? avg.adc : null} p={p} />
+        <View style={{marginTop: 18}}>
+          <Bars values={mix} color={p.primary} track={p.surfaceAlt} height={44} />
+          <Text style={[s.small, {marginTop: 6}]}>Últimas {mix.length || 0} lecturas combinadas</Text>
+        </View>
       </View>
 
-      <View style={styles.settingsBox}>
-        <Text style={styles.inputLabel}>URL BROKER WEBSOCKET</Text>
-        <TextInput
-          style={styles.input}
-          value={brokerUrl}
-          onChangeText={setBrokerUrl}
-          autoCapitalize="none"
-          keyboardType="url"
-        />
-
-        <View style={{flexDirection: 'row', gap: 8, marginVertical: 8}}>
-          <Pressable style={styles.presetTag} onPress={() => setBrokerUrl('ws://192.168.18.10:8084/mqtt')}>
-            <Text style={styles.presetTagText}>📍 Wi-Fi (192.168.18.10)</Text>
-          </Pressable>
-          <Pressable style={styles.presetTag} onPress={() => setBrokerUrl('ws://127.0.0.1:8084/mqtt')}>
-            <Text style={styles.presetTagText}>💻 Localhost (127.0.0.1)</Text>
-          </Pressable>
+      <View style={s.row}>
+        <View style={[s.card, s.cell]}>
+          <Text style={s.eyebrow}>Tensión GPIO 34</Text>
+          <Text style={s.metric}>{avg?.volt != null ? avg.volt.toFixed(2) : '—'}</Text>
+          <Text style={s.small}>voltios</Text>
         </View>
+        <View style={[s.card, s.cell]}>
+          <Text style={s.eyebrow}>Temperatura</Text>
+          <Text style={s.metric}>{avg?.temp != null ? avg.temp.toFixed(1) : '—'}</Text>
+          <Text style={s.small}>°C · DS18B20</Text>
+        </View>
+      </View>
+      <View style={s.row}>
+        <View style={[s.card, s.cell]}>
+          <Text style={s.eyebrow}>Tendencia</Text>
+          <Text style={s.metric}>{avg ? avg.trend : '—'}</Text>
+          <Text style={s.small}>suavizado exp.</Text>
+        </View>
+        <View style={[s.card, s.cell]}>
+          <Text style={s.eyebrow}>Recepción</Text>
+          <Text style={s.metric}>{rate}</Text>
+          <Text style={s.small}>msg/s · {total} en total</Text>
+        </View>
+      </View>
 
-        <Text style={styles.inputLabel}>USUARIO MQTT (AUTHN)</Text>
-        <TextInput
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-        />
-
-        <Text style={styles.inputLabel}>CONTRASEÑA (SHA-256)</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-        />
-
-        <Pressable
-          style={[styles.primaryActionBtn, connectionStatus === 'connected' && {backgroundColor: THEME.colors.rose}]}
-          onPress={connectionStatus === 'connected' ? handleDisconnect : () => handleConnect()}
-        >
-          <Text style={styles.primaryActionBtnText}>
-            {connectionStatus === 'connected' ? 'Desconectar' : '⚡ Establecer Enlace'}
-          </Text>
-        </Pressable>
+      <View style={s.card}>
+        <Text style={s.eyebrow}>Referencia del estudio</Text>
+        <Text style={s.cardTitle}>Qué mide y qué no</Text>
+        <Text style={s.body}>
+          El prototipo registra la señal óptica asociada a turbidez como cuentas ADC (0–4095). No está calibrado en NTU ni
+          determina si el agua es potable.
+        </Text>
+        <View style={s.divider} />
+        <View style={s.kv}>
+          <Text style={s.kvKey}>Sesión 1 · agua limpia</Text>
+          <Text style={s.kvVal}>≈ {STUDY.s1}</Text>
+        </View>
+        <View style={s.kv}>
+          <Text style={s.kvKey}>Sesión 2 · con sedimento</Text>
+          <Text style={s.kvVal}>≈ {STUDY.s2}</Text>
+        </View>
+        <View style={s.kv}>
+          <Text style={s.kvKey}>Regresión Ridge (h = 5), RMSE</Text>
+          <Text style={s.kvVal}>{STUDY.ridgeRmse}</Text>
+        </View>
+        <View style={s.kv}>
+          <Text style={s.kvKey}>Persistencia, RMSE</Text>
+          <Text style={s.kvVal}>{STUDY.persistenceRmse}</Text>
+        </View>
+        <View style={s.kv}>
+          <Text style={s.kvKey}>R² del modelo Ridge</Text>
+          <Text style={s.kvVal}>{STUDY.ridgeR2}</Text>
+        </View>
+        <Text style={[s.small, {marginTop: 8}]}>Resultados exploratorios, sobre tres sesiones de laboratorio.</Text>
       </View>
     </ScrollView>
   );
 
-  // ==========================================================================
-  // RENDER: MODAL DE FICHA TÉCNICA
-  // ==========================================================================
-  const renderDetailModal = () => {
-    if (!selectedNode) return null;
-    const isS1 = selectedNode.regimen === 's1';
-    const isS2 = selectedNode.regimen === 's2';
-    const color = isS1 ? THEME.colors.mint : (isS2 ? THEME.colors.amber : THEME.colors.rose);
-
-    return (
-      <Modal visible={true} animationType="slide" transparent={true} onRequestClose={() => setSelectedNode(null)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalId}>🚰 {selectedNode.id}</Text>
-                <Text style={styles.modalLoc}>{selectedNode.location}</Text>
-              </View>
-              <Pressable style={styles.modalXBtn} onPress={() => setSelectedNode(null)}>
-                <Text style={styles.modalXBtnText}>✕</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={[styles.modalConditionBox, {borderColor: color, backgroundColor: `${color}15`}]}>
-                <Text style={[styles.modalConditionTitle, {color}]}>{selectedNode.regimenLabel}</Text>
-                <Text style={styles.modalConditionText}>
-                  {isS1 ? 'Señal óptica basal estable (~2133 cuentas). Dispersión mínima de luz.' : (isS2 ? 'Atenuación óptica (~1882 cuentas) por sedimento agregado.' : 'Perturbación severa o anomalía de sensor.')}
+  // ----------------------------------------------------------------- Nodos
+  const Nodos = (
+    <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <Text style={s.screenTitle}>Nodos</Text>
+      <Text style={[s.body, {marginBottom: 14}]}>Cada ESP32 publica en su propio tópico. Toca un nodo para ver el detalle.</Text>
+      {list.length === 0 && (
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Sin nodos todavía</Text>
+          <Text style={s.body}>Conéctate al broker para que aparezcan los dispositivos que estén publicando.</Text>
+        </View>
+      )}
+      {list.map(n => {
+        const d = describeSignal(n.adc);
+        return (
+          <Pressable key={n.id} style={s.card} onPress={() => setSelected(n.id)}>
+            <View style={s.spread}>
+              <View style={{flex: 1, paddingRight: 8}}>
+                <Text style={s.cardTitle} numberOfLines={1}>
+                  {n.id}
+                </Text>
+                <Text style={s.small} numberOfLines={1}>
+                  {n.location}
                 </Text>
               </View>
+              <View style={[s.badge, {backgroundColor: n.physical ? p.goodSoft : p.surfaceAlt}]}>
+                <Text style={[s.badgeText, {color: n.physical ? p.good : p.inkSoft}]}>{n.physical ? 'Físico' : 'Virtual'}</Text>
+              </View>
+            </View>
+            <View style={[s.spread, {marginTop: 12, alignItems: 'flex-end'}]}>
+              <View>
+                <Text style={s.metric}>{n.adc}</Text>
+                <Text style={s.small}>cuentas ADC</Text>
+              </View>
+              <View style={{alignItems: 'flex-end'}}>
+                <Text style={s.body}>{n.voltage != null ? `${n.voltage.toFixed(2)} V` : '— V'}</Text>
+                <Text style={s.body}>{n.temperature != null ? `${n.temperature.toFixed(1)} °C` : '— °C'}</Text>
+              </View>
+            </View>
+            <View style={{marginTop: 12}}>
+              <Bars values={n.history.map(h => h.adc)} color={tone(d.tone)} track={p.surfaceAlt} height={28} />
+            </View>
+            <Text style={[s.small, {marginTop: 8, color: tone(d.tone)}]}>{d.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
 
-              <View style={styles.detailGrid}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>SEÑAL ADC (12-BITS)</Text>
-                  <Text style={[styles.detailVal, {color}]}>{selectedNode.adcRaw} cuentas</Text>
-                  <Text style={styles.detailSub}>Entrada GPIO 34</Text>
+  // -------------------------------------------------------------- Registro
+  const Registro = (
+    <View style={{flex: 1}}>
+      <View style={[s.spread, {paddingHorizontal: 20, paddingTop: 20}]}>
+        <Text style={s.screenTitle}>Registro</Text>
+        <Pressable onPress={() => setLogs([])} hitSlop={10}>
+          <Text style={[s.link]}>Limpiar</Text>
+        </Pressable>
+      </View>
+      <ScrollView contentContainerStyle={[s.content, {paddingTop: 12}]} showsVerticalScrollIndicator={false}>
+        {logs.length === 0 ? (
+          <Text style={s.body}>Todavía no hay eventos.</Text>
+        ) : (
+          <View style={s.card}>
+            {logs.map((l, i) => (
+              <View key={l.id} style={[s.logRow, i > 0 && {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: p.line}]}>
+                <Text style={s.logTime}>{l.time}</Text>
+                <Text
+                  style={[
+                    s.logText,
+                    l.level === 'error' && {color: p.bad},
+                    l.level === 'warn' && {color: p.warn},
+                    l.level === 'success' && {color: p.good},
+                  ]}>
+                  {l.text}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  // --------------------------------------------------------------- Ajustes
+  const Ajustes = (
+    <ScrollView
+      contentContainerStyle={[s.content, {paddingBottom: 140}]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}>
+      <Text style={s.screenTitle}>Ajustes</Text>
+
+      <View style={s.card}>
+        <Text style={s.eyebrow}>Apariencia</Text>
+        <View style={s.segment}>
+          {(['light', 'dark', 'system'] as ThemeMode[]).map(m => (
+            <Pressable key={m} style={[s.segItem, mode === m && s.segItemOn]} onPress={() => setMode(m)}>
+              <Text style={[s.segText, mode === m && s.segTextOn]}>{m === 'light' ? 'Claro' : m === 'dark' ? 'Oscuro' : 'Sistema'}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={s.card}>
+        <Text style={s.eyebrow}>Conexión MQTT por WebSocket</Text>
+        <View style={{flexDirection: 'row', gap: 8, marginTop: 10}}>
+          <Pressable style={s.chip} onPress={() => setUrl(DEFAULTS.wifi)}>
+            <Text style={s.chipText}>Wi-Fi del laboratorio</Text>
+          </Pressable>
+          <Pressable style={s.chip} onPress={() => setUrl(DEFAULTS.local)}>
+            <Text style={s.chipText}>Este equipo</Text>
+          </Pressable>
+        </View>
+        <Text style={s.label}>Dirección del broker</Text>
+        <TextInput
+          style={s.input}
+          value={url}
+          onChangeText={setUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          placeholderTextColor={p.inkFaint}
+        />
+        <Text style={s.label}>Usuario</Text>
+        <TextInput
+          style={s.input}
+          value={user}
+          onChangeText={setUser}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholderTextColor={p.inkFaint}
+        />
+        <View style={s.spread}>
+          <Text style={s.label}>Contraseña</Text>
+          <Pressable onPress={() => setShowPass(v => !v)} hitSlop={10}>
+            <Text style={s.link}>{showPass ? 'Ocultar' : 'Mostrar'}</Text>
+          </Pressable>
+        </View>
+        <TextInput
+          style={s.input}
+          value={pass}
+          onChangeText={setPass}
+          secureTextEntry={!showPass}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholderTextColor={p.inkFaint}
+        />
+        <View style={{flexDirection: 'row', gap: 10, marginTop: 16}}>
+          <Pressable style={[s.btn, {flex: 1, marginTop: 0}, busy && s.btnDisabled]} disabled={busy} onPress={() => connect()}>
+            {busy ? <ActivityIndicator color={p.onPrimary} /> : <Text style={s.btnText}>{online ? 'Reconectar' : 'Conectar'}</Text>}
+          </Pressable>
+          <Pressable style={[s.btnGhost, !(online || busy) && {opacity: 0.4}]} disabled={!(online || busy)} onPress={disconnect}>
+            <Text style={s.btnGhostText}>Desconectar</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={s.card}>
+        <Text style={s.eyebrow}>Seguridad</Text>
+        <Text style={s.body}>
+          La cuenta <Text style={s.mono}>mobile_monitor</Text> solo puede suscribirse a <Text style={s.mono}>{TOPIC}</Text>; no puede
+          publicar. Las credenciales se validan contra MySQL en EMQX y el resto de tópicos queda denegado por defecto.
+        </Text>
+        <Text style={[s.small, {marginTop: 8}]}>
+          El enlace usa ws:// dentro de la red local. Fuera del laboratorio debería usarse wss:// con certificado.
+        </Text>
+      </View>
+    </ScrollView>
+  );
+
+  const tabs: {key: Tab; label: string}[] = [
+    {key: 'resumen', label: 'Resumen'},
+    {key: 'nodos', label: 'Nodos'},
+    {key: 'registro', label: 'Registro'},
+    {key: 'ajustes', label: 'Ajustes'},
+  ];
+
+  const dot = online ? p.good : status === 'error' ? p.bad : busy ? p.warn : p.inkFaint;
+
+  return (
+    <View style={[s.root, {paddingTop: insets.top}]}>
+      <StatusBar barStyle={p.isDark ? 'light-content' : 'dark-content'} />
+
+      <View style={s.header}>
+        <View>
+          <Text style={s.brand}>TurbiSense</Text>
+          <Text style={s.brandSub}>Señal óptica en agua almacenada</Text>
+        </View>
+        <Pressable style={s.status} onPress={() => (online ? setTab('nodos') : setTab('ajustes'))}>
+          <View style={[s.statusDot, {backgroundColor: dot}]} />
+          <Text style={s.statusText}>{STATUS_TEXT[status]}</Text>
+        </Pressable>
+      </View>
+
+      <View style={{flex: 1}}>
+        {tab === 'resumen' && Resumen}
+        {tab === 'nodos' && Nodos}
+        {tab === 'registro' && Registro}
+        {tab === 'ajustes' && Ajustes}
+      </View>
+
+      <View style={[s.tabBar, {paddingBottom: Math.max(insets.bottom, 10)}]}>
+        {tabs.map(t => (
+          <Pressable key={t.key} style={s.tab} onPress={() => setTab(t.key)}>
+            <View style={[s.tabBar2, tab === t.key && {backgroundColor: p.primary}]} />
+            <Text style={[s.tabText, tab === t.key && s.tabTextOn]}>{t.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Modal visible={!!selectedNode} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
+        <Pressable style={s.scrim} onPress={() => setSelected(null)} />
+        {selectedNode && (
+          <View style={[s.sheet, {paddingBottom: Math.max(insets.bottom, 16) + 8}]}>
+            <View style={s.grabber} />
+            <View style={s.spread}>
+              <View style={{flex: 1}}>
+                <Text style={s.cardTitle}>{selectedNode.id}</Text>
+                <Text style={s.small}>{selectedNode.location}</Text>
+              </View>
+              <Pressable onPress={() => setSelected(null)} hitSlop={12}>
+                <Text style={s.link}>Cerrar</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={{maxHeight: 460}} showsVerticalScrollIndicator={false}>
+              <View style={[s.row, {marginTop: 14}]}>
+                <View style={[s.cell, s.mini]}>
+                  <Text style={s.eyebrow}>ADC</Text>
+                  <Text style={s.metric}>{selectedNode.adc}</Text>
+                  <Text style={s.small}>{selectedNode.adcDerived ? 'derivado de la tensión' : 'lectura directa'}</Text>
                 </View>
-
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>TENSIÓN ACONDICIONADA</Text>
-                  <Text style={[styles.detailVal, {color: THEME.colors.cyan}]}>
-                    {selectedNode.voltage !== null ? `${selectedNode.voltage.toFixed(3)} V` : '—'}
-                  </Text>
-                  <Text style={styles.detailSub}>Divisor 10k / 20k</Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>TEMPERATURA 1-WIRE</Text>
-                  <Text style={styles.detailVal}>
-                    {selectedNode.temperature !== null ? `${selectedNode.temperature.toFixed(2)} °C` : '—'}
-                  </Text>
-                  <Text style={styles.detailSub}>Dallas DS18B20 (GPIO 4)</Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>PREVISIÓN RIDGE (h=5)</Text>
-                  <Text style={[styles.detailVal, {color: THEME.colors.mint}]}>{selectedNode.ridgePred} cuentas</Text>
-                  <Text style={styles.detailSub}>Modelo exploratorio</Text>
+                <View style={[s.cell, s.mini]}>
+                  <Text style={s.eyebrow}>Tendencia</Text>
+                  <Text style={s.metric}>{Math.round(selectedNode.trend)}</Text>
+                  <Text style={s.small}>suavizado exp.</Text>
                 </View>
               </View>
-
-              <Pressable style={styles.modalDismissBtn} onPress={() => setSelectedNode(null)}>
-                <Text style={styles.modalDismissBtnText}>✕ Cerrar Ficha Técnica</Text>
-              </Pressable>
+              <View style={[s.row, {marginTop: 10}]}>
+                <View style={[s.cell, s.mini]}>
+                  <Text style={s.eyebrow}>Tensión</Text>
+                  <Text style={s.metric}>{selectedNode.voltage != null ? selectedNode.voltage.toFixed(3) : '—'}</Text>
+                  <Text style={s.small}>V en GPIO 34</Text>
+                </View>
+                <View style={[s.cell, s.mini]}>
+                  <Text style={s.eyebrow}>Temperatura</Text>
+                  <Text style={s.metric}>{selectedNode.temperature != null ? selectedNode.temperature.toFixed(1) : '—'}</Text>
+                  <Text style={s.small}>°C</Text>
+                </View>
+              </View>
+              <View style={[s.kv, {marginTop: 14}]}>
+                <Text style={s.kvKey}>Estado del hardware</Text>
+                <Text style={s.kvVal}>{selectedNode.health}</Text>
+              </View>
+              <View style={s.kv}>
+                <Text style={s.kvKey}>Origen</Text>
+                <Text style={s.kvVal}>{selectedNode.physical ? 'Dispositivo físico' : 'Simulación virtual'}</Text>
+              </View>
+              <View style={s.kv}>
+                <Text style={s.kvKey}>Última lectura</Text>
+                <Text style={s.kvVal}>{clock(selectedNode.lastSeen)}</Text>
+              </View>
+              <Text style={[s.eyebrow, {marginTop: 16, marginBottom: 8}]}>Historial reciente (ADC)</Text>
+              <Bars values={selectedNode.history.map(h => h.adc)} color={p.primary} track={p.surfaceAlt} height={56} />
+              <View style={{marginTop: 12}}>
+                {[...selectedNode.history]
+                  .reverse()
+                  .slice(0, 6)
+                  .map((h, i) => (
+                    <View key={i} style={s.kv}>
+                      <Text style={s.kvKey}>{clock(h.at)}</Text>
+                      <Text style={s.kvVal}>{h.adc}</Text>
+                    </View>
+                  ))}
+              </View>
             </ScrollView>
+            <Pressable style={s.btnGhostFull} onPress={() => setSelected(null)}>
+              <Text style={s.btnGhostText}>Volver</Text>
+            </Pressable>
           </View>
-        </View>
+        )}
       </Modal>
-    );
-  };
+    </View>
+  );
+}
 
-  // ==========================================================================
-  // RENDER GENERAL
-  // ==========================================================================
+export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        
-        {/* NAVBAR SUPERIOR CON ESPACIO SEGURO PARA NOTCH */}
-        <View style={styles.navbarSafe}>
-          <View style={styles.brandGroup}>
-            <View style={styles.brandIconBox}>
-              <Text style={{fontSize: 18}}>💧</Text>
-            </View>
-            <View>
-              <Text style={styles.brandName}>TURBISENSE <Text style={{fontSize: 9, color: THEME.colors.cyan}}>IoT UNT</Text></Text>
-              <Text style={styles.brandSub}>SEÑAL ÓPTICA INSTRUMENTAL (ADC)</Text>
-            </View>
-          </View>
-
-          <Pressable
-            style={[styles.statusBadge, connectionStatus === 'connected' ? styles.statusBadgeOnline : (connectionStatus === 'connecting' ? styles.statusBadgeWarn : styles.statusBadgeOffline)]}
-            onPress={connectionStatus === 'connected' ? handleDisconnect : () => handleConnect()}
-          >
-            <View style={[styles.statusDot, connectionStatus === 'connected' && {backgroundColor: THEME.colors.mint}]} />
-            <Text style={styles.statusBadgeText}>
-              {connectionStatus === 'connected' ? 'ONLINE' : (connectionStatus === 'connecting' ? 'CONECTANDO' : 'DESCONECTADO')}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* VISTAS */}
-        <View style={{flex: 1}}>
-          {activeTab === 'dashboard' && renderDashboard()}
-          {activeTab === 'stations' && renderDashboard()}
-          {activeTab === 'analytics' && renderAnalytics()}
-          {activeTab === 'settings' && renderSettings()}
-        </View>
-
-        {/* MODAL */}
-        {renderDetailModal()}
-
-        {/* BOTTOM TAB BAR */}
-        <View style={styles.tabBar}>
-          <Pressable style={styles.tabBtn} onPress={() => setActiveTab('dashboard')}>
-            <Text style={[styles.tabBtnIcon, activeTab === 'dashboard' && styles.tabBtnIconActive]}>📊</Text>
-            <Text style={[styles.tabBtnLabel, activeTab === 'dashboard' && styles.tabBtnLabelActive]}>Dashboard</Text>
-          </Pressable>
-
-          <Pressable style={styles.tabBtn} onPress={() => setActiveTab('stations')}>
-            <Text style={[styles.tabBtnIcon, activeTab === 'stations' && styles.tabBtnIconActive]}>🚰</Text>
-            <Text style={[styles.tabBtnLabel, activeTab === 'stations' && styles.tabBtnLabelActive]}>Nodos</Text>
-          </Pressable>
-
-          <Pressable style={styles.tabBtn} onPress={() => setActiveTab('analytics')}>
-            <Text style={[styles.tabBtnIcon, activeTab === 'analytics' && styles.tabBtnIconActive]}>📈</Text>
-            <Text style={[styles.tabBtnLabel, activeTab === 'analytics' && styles.tabBtnLabelActive]}>Eventos</Text>
-          </Pressable>
-
-          <Pressable style={styles.tabBtn} onPress={() => setActiveTab('settings')}>
-            <Text style={[styles.tabBtnIcon, activeTab === 'settings' && styles.tabBtnIconActive]}>⚙️</Text>
-            <Text style={[styles.tabBtnLabel, activeTab === 'settings' && styles.tabBtnLabelActive]}>Ajustes</Text>
-          </Pressable>
-        </View>
-
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <Main />
+    </SafeAreaProvider>
   );
 }
 
 // ============================================================================
-// 4. ESTILOS ARQUITECTURALES SAFE AREA CERTIFIED
+// Estilos
 // ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.bgDark,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 24,
-  },
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    root: {flex: 1, backgroundColor: p.bg},
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingTop: 14,
+      paddingBottom: 10,
+    },
+    brand: {fontSize: 22, fontWeight: '700', color: p.ink, letterSpacing: -0.3},
+    brandSub: {fontSize: 12, color: p.inkSoft, marginTop: 1},
+    status: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: p.surface,
+      borderWidth: 1,
+      borderColor: p.line,
+    },
+    statusDot: {width: 8, height: 8, borderRadius: 4},
+    statusText: {fontSize: 12, fontWeight: '600', color: p.ink},
 
-  /* NAVBAR CON SAFE AREA TOP PADDING */
-  navbarSafe: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 12 : 6,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
-    backgroundColor: 'rgba(9, 18, 34, 0.95)',
-  },
-  brandGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  brandIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: THEME.colors.cyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandName: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
-  brandSub: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.textMuted,
-    letterSpacing: 1,
-    marginTop: 1,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  statusBadgeOnline: {
-    backgroundColor: 'rgba(0, 242, 169, 0.15)',
-    borderColor: 'rgba(0, 242, 169, 0.4)',
-  },
-  statusBadgeWarn: {
-    backgroundColor: 'rgba(255, 183, 3, 0.15)',
-    borderColor: 'rgba(255, 183, 3, 0.4)',
-  },
-  statusBadgeOffline: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: THEME.colors.border,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: THEME.colors.textMuted,
-  },
-  statusBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#fff',
-  },
+    content: {paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, gap: 14},
+    screenTitle: {fontSize: 26, fontWeight: '700', color: p.ink, letterSpacing: -0.4},
+    card: {
+      backgroundColor: p.surface,
+      borderRadius: 18,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: p.line,
+    },
+    row: {flexDirection: 'row', gap: 12},
+    cell: {flex: 1},
+    mini: {backgroundColor: p.surfaceAlt, borderRadius: 14, padding: 14},
+    spread: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
 
-  /* NOTA CIENTÍFICA */
-  scienceNoticeBox: {
-    backgroundColor: 'rgba(0, 229, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 14,
-  },
-  scienceNoticeText: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    lineHeight: 14,
-  },
+    eyebrow: {fontSize: 11, fontWeight: '600', color: p.inkSoft, letterSpacing: 0.6, textTransform: 'uppercase'},
+    cardTitle: {fontSize: 17, fontWeight: '700', color: p.ink, marginTop: 4},
+    body: {fontSize: 14, lineHeight: 20, color: p.inkSoft, marginTop: 6},
+    strong: {fontWeight: '700', color: p.ink},
+    small: {fontSize: 12, color: p.inkFaint, marginTop: 2},
+    mono: {fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: p.ink},
+    bigNumber: {fontSize: 52, fontWeight: '700', color: p.ink, letterSpacing: -1.5, fontVariant: ['tabular-nums']},
+    unit: {fontSize: 15, color: p.inkSoft},
+    metric: {fontSize: 26, fontWeight: '700', color: p.ink, marginTop: 6, fontVariant: ['tabular-nums']},
+    divider: {height: StyleSheet.hairlineWidth, backgroundColor: p.line, marginVertical: 14},
+    kv: {flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6},
+    kvKey: {fontSize: 13, color: p.inkSoft, flex: 1, paddingRight: 10},
+    kvVal: {fontSize: 13, fontWeight: '700', color: p.ink, fontVariant: ['tabular-nums']},
+    badge: {paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999},
+    badgeText: {fontSize: 11, fontWeight: '700'},
 
-  /* HERO SIGNAL CARD */
-  heroSignalCard: {
-    backgroundColor: THEME.colors.bgCard,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 18,
-    marginBottom: 14,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  heroEyebrow: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.cyan,
-    letterSpacing: 1.2,
-  },
-  heroTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#fff',
-    marginTop: 2,
-  },
-  regimenPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0, 242, 169, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 242, 169, 0.3)',
-  },
-  regimenPillText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.mint,
-  },
-  heroDataRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 14,
-  },
-  heroScoreNum: {
-    fontSize: 44,
-    fontWeight: '900',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: THEME.colors.cyan,
-    lineHeight: 46,
-  },
-  heroScoreUnit: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    fontWeight: '600',
-  },
-  heroSubStats: {
-    gap: 4,
-  },
-  subStatRow: {
-    alignItems: 'flex-end',
-  },
-  subStatLabel: {
-    fontSize: 7,
-    fontWeight: '700',
-    color: THEME.colors.textMuted,
-  },
-  subStatVal: {
-    fontSize: 13,
-    fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#fff',
-  },
-  benchmarkRow: {
-    flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.border,
-    paddingTop: 10,
-    marginTop: 6,
-  },
-  benchTag: {
-    fontSize: 8,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: THEME.colors.textSecondary,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
+    btn: {
+      marginTop: 16,
+      backgroundColor: p.primary,
+      borderRadius: 14,
+      height: 50,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnDisabled: {opacity: 0.6},
+    btnText: {fontSize: 15, fontWeight: '700', color: p.onPrimary},
+    btnGhost: {
+      borderRadius: 14,
+      height: 50,
+      paddingHorizontal: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: p.line,
+    },
+    btnGhostFull: {
+      marginTop: 14,
+      borderRadius: 14,
+      height: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: p.line,
+    },
+    btnGhostText: {fontSize: 14, fontWeight: '600', color: p.ink},
+    link: {fontSize: 14, fontWeight: '600', color: p.primary},
 
-  /* 1-CLIC BANNER */
-  quickConnectBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(0, 229, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.25)',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-    gap: 10,
-  },
-  qcTitle: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.cyan,
-    letterSpacing: 0.8,
-  },
-  qcSubtitle: {
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#fff',
-    fontWeight: '700',
-    marginTop: 1,
-  },
-  qcBtn: {
-    backgroundColor: THEME.colors.cyan,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  qcBtnConnected: {
-    backgroundColor: THEME.colors.mint,
-  },
-  qcBtnText: {
-    color: THEME.colors.bgDark,
-    fontSize: 11,
-    fontWeight: '800',
-  },
+    label: {fontSize: 12, fontWeight: '600', color: p.inkSoft, marginTop: 14, marginBottom: 6},
+    input: {
+      height: 48,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.line,
+      backgroundColor: p.bg,
+      paddingHorizontal: 14,
+      fontSize: 14,
+      color: p.ink,
+    },
+    chip: {paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: p.primarySoft},
+    chipText: {fontSize: 12, fontWeight: '600', color: p.primary},
+    segment: {flexDirection: 'row', backgroundColor: p.surfaceAlt, borderRadius: 12, padding: 4, marginTop: 12},
+    segItem: {flex: 1, height: 38, borderRadius: 9, alignItems: 'center', justifyContent: 'center'},
+    segItemOn: {backgroundColor: p.surface},
+    segText: {fontSize: 13, fontWeight: '600', color: p.inkSoft},
+    segTextOn: {color: p.ink},
 
-  /* KPI ROW */
-  kpiRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  kpiCard: {
-    flex: 1,
-    backgroundColor: THEME.colors.bgCard,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    borderRadius: 12,
-    padding: 10,
-  },
-  kpiTag: {
-    fontSize: 7,
-    fontWeight: '800',
-    color: THEME.colors.textMuted,
-  },
-  kpiNum: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#fff',
-    marginVertical: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  kpiSub: {
-    fontSize: 7,
-    color: THEME.colors.textSecondary,
-  },
+    logRow: {flexDirection: 'row', gap: 12, paddingVertical: 9},
+    logTime: {fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11, color: p.inkFaint, width: 58, paddingTop: 2},
+    logText: {flex: 1, fontSize: 13, lineHeight: 18, color: p.ink},
 
-  /* SECCION */
-  sectionHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.8,
-  },
-  sectionCount: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    fontWeight: '700',
-  },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: p.surface,
+      borderTopWidth: 1,
+      borderTopColor: p.line,
+      paddingTop: 8,
+    },
+    tab: {flex: 1, alignItems: 'center', gap: 6, paddingVertical: 4},
+    tabBar2: {width: 22, height: 3, borderRadius: 2, backgroundColor: 'transparent'},
+    tabText: {fontSize: 12, fontWeight: '600', color: p.inkFaint},
+    tabTextOn: {color: p.primary},
 
-  /* NODE CARD */
-  nodeCard: {
-    backgroundColor: THEME.colors.bgCard,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 14,
-    marginBottom: 10,
-  },
-  nodeCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  nodeIdText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  badgeOrigin: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  badgeOriginPhysical: {
-    backgroundColor: 'rgba(0, 229, 255, 0.15)',
-  },
-  badgeOriginText: {
-    fontSize: 7,
-    fontWeight: '800',
-    color: THEME.colors.cyan,
-  },
-  nodeLocationText: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
-  },
-  regimenChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  regimenChipText: {
-    fontSize: 7,
-    fontWeight: '800',
-  },
-  nodeMetricsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  metricCell: {
-    flex: 1,
-    backgroundColor: THEME.colors.bgInput,
-    borderRadius: 8,
-    padding: 8,
-  },
-  metricCellLabel: {
-    fontSize: 7,
-    fontWeight: '700',
-    color: THEME.colors.textMuted,
-  },
-  metricCellNum: {
-    fontSize: 16,
-    fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    marginTop: 2,
-  },
-  metricCellUnit: {
-    fontSize: 9,
-    color: THEME.colors.textSecondary,
-    fontWeight: '500',
-  },
-  nodeCardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.border,
-    paddingTop: 6,
-  },
-  nodeFooterText: {
-    fontSize: 9,
-    color: THEME.colors.textMuted,
-  },
-
-  /* EMPTY */
-  emptyCard: {
-    backgroundColor: THEME.colors.bgCard,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyIcon: {
-    fontSize: 28,
-    marginBottom: 6,
-  },
-  emptyTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  emptyDesc: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-
-  /* TERMINAL */
-  tabViewFull: {
-    flex: 1,
-    padding: 16,
-  },
-  pageHeader: {
-    marginBottom: 12,
-  },
-  pageTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  pageSubtitle: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    marginTop: 1,
-  },
-  terminalContainer: {
-    flex: 1,
-    backgroundColor: '#02050b',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 10,
-  },
-  terminalTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
-    paddingBottom: 6,
-    marginBottom: 6,
-  },
-  terminalTitle: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.cyan,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  terminalClear: {
-    fontSize: 9,
-    color: THEME.colors.textMuted,
-    fontWeight: '700',
-  },
-  terminalEmpty: {
-    color: THEME.colors.textMuted,
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  logTime: {
-    fontSize: 9,
-    color: THEME.colors.textMuted,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  logText: {
-    fontSize: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-
-  /* SETTINGS */
-  settingsBox: {
-    backgroundColor: THEME.colors.bgCard,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 16,
-  },
-  inputLabel: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: THEME.colors.textMuted,
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: THEME.colors.bgInput,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    borderRadius: 8,
-    color: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  presetTag: {
-    backgroundColor: 'rgba(0, 229, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  presetTagText: {
-    fontSize: 8,
-    color: THEME.colors.cyan,
-    fontWeight: '700',
-  },
-  primaryActionBtn: {
-    backgroundColor: THEME.colors.cyan,
-    borderRadius: 8,
-    paddingVertical: 11,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  primaryActionBtnText: {
-    color: THEME.colors.bgDark,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  /* MODAL */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: THEME.colors.bgCardElevated,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderActive,
-    padding: 18,
-    maxHeight: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  modalId: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#fff',
-  },
-  modalLoc: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
-  },
-  modalXBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalXBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modalConditionBox: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
-  },
-  modalConditionTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  modalConditionText: {
-    fontSize: 10,
-    color: '#fff',
-    marginTop: 2,
-  },
-  detailGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
-  },
-  detailItem: {
-    width: '48%',
-    backgroundColor: THEME.colors.bgInput,
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-  },
-  detailLabel: {
-    fontSize: 7,
-    fontWeight: '800',
-    color: THEME.colors.textMuted,
-  },
-  detailVal: {
-    fontSize: 15,
-    fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    marginVertical: 2,
-    color: '#fff',
-  },
-  detailSub: {
-    fontSize: 8,
-    color: THEME.colors.textSecondary,
-  },
-  modalDismissBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  modalDismissBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
-  },
-
-  /* TAB BAR */
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.border,
-    backgroundColor: 'rgba(9, 18, 34, 0.98)',
-    paddingVertical: 6,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-  },
-  tabBtn: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  tabBtnIcon: {
-    fontSize: 15,
-    opacity: 0.5,
-  },
-  tabBtnIconActive: {
-    opacity: 1,
-    transform: [{scale: 1.1}],
-  },
-  tabBtnLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: THEME.colors.textMuted,
-  },
-  tabBtnLabelActive: {
-    color: THEME.colors.cyan,
-  },
-});
+    scrim: {flex: 1, backgroundColor: p.scrim},
+    sheet: {
+      backgroundColor: p.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+    },
+    grabber: {alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: p.line, marginBottom: 14},
+  });
