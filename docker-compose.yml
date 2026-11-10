@@ -17,7 +17,7 @@ services:
     hostname: node1.emqxnet
     restart: "no"
     ports:
-      - "1884:1883"      # Tráfico estándar MQTT M2M
+      - "1883:1883"      # Tráfico estándar MQTT M2M
       - "8084:8083"      # MQTT sobre WebSockets (para frontend React)
       - "18084:18083"    # Consola Web de Administración EMQX
     environment:
